@@ -1,0 +1,22 @@
+
+#ifndef _SWITCH_H_
+#define _SWITCH_H_
+
+#include "freertos/event_groups.h"
+#include "freertos/task.h"
+
+#define M_IN1 19  //电机驱动IO 1
+#define M_IN2 22  //电机驱动IO 2
+#define TRIP_EN 4 //脱扣器
+#define HALL_M 36 //电机齿轮
+#define HALL_S 38 //闸门
+#define HALL_F 37 //保险
+
+EventGroupHandle_t Sw_sta_group;
+#define SW_STA_BIT (1 << 0) //闸门状态
+#define M_STA_BIT (1 << 1)  //电机复位状态
+
+void Switch_Init(void);
+void Switch_Relay(int8_t set_value);
+
+#endif
