@@ -1056,7 +1056,7 @@ void HLW_Read_Task(void *arg)
 
     while (1)
     {
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
+        vTaskDelay(500 / portTICK_PERIOD_MS);
 
         if (Judge_CheckSum_HLW8112_Calfactor() == false)
         {
@@ -1142,11 +1142,11 @@ void HLW_Read_Task(void *arg)
 
         // // printf("\r\n\r\n"); //插入换行
         // printf("B通道电能参数\r\n");
-        // printf("F_AC_I_B = %f A \n ", F_AC_I_B);   //B通道电流
+        printf("F_AC_I_B = %f A \n ", F_AC_I_B); //B通道电流
         // printf("F_AC_P_B = %f W \n ", F_AC_P_B);   //B通道功率
         // printf("F_AC_E_B = %f KWH \n ", F_AC_E_B); //B通道电量
 
-        printf("dat:%.3f,%.3f,%.3f\n", F_AC_V, F_AC_I, F_AC_P);
+        // printf("dat:%.3f,%.3f,%.3f\n", F_AC_V, F_AC_I, F_AC_P);
 
         // printf("\r\n\r\n");                                   //插入换行
         // printf("F_AC_PF = %f\n ", F_AC_PF);                   //A通道功率因素

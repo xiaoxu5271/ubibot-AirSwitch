@@ -34,7 +34,7 @@ void app_main()
     printf("%dMB %s flash\n", spi_flash_get_chip_size() / (1024 * 1024),
            (chip_info.features & CHIP_FEATURE_EMB_FLASH) ? "embedded" : "external");
 
-    // HLW_Init();
+    HLW_Init();
     user_app_key_init();
     Switch_Init();
     Led_Init();

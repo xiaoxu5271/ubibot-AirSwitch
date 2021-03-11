@@ -26,9 +26,10 @@
 宏定义
 =========================== 
 */
-#define BOARD_BUTTON_COUNT 1
+#define BOARD_BUTTON_COUNT 2
 #define BOARD_BUTTON GPIO_NUM_34
-#define BOARD_BUTTON_NUM GPIO_ID_PIN(GPIO_NUM_34)
+#define KEY_TEST GPIO_NUM_39 //漏电检测按键
+
 #define DECOUNE_TIMER 10 * 1000            ///< 10mS
 #define SHORT_PRESS_DELAY_CHECK 150 * 1000 ///< 150ms
 #define LONG_PRESSED_TIMER 5000 * 1000     ///< 5000mS
@@ -68,7 +69,7 @@ typedef struct key_config
 /* 定义一个按键相关参数的结构体 */
 typedef struct key_param
 {
-    uint32_t decounce_time;                            ///< 按键消抖的时间,单位us
+    uint64_t decounce_time;                            ///< 按键消抖的时间,单位us
     user_key_function_callback_t long_press_callback;  ///< 长按的回调函数
     user_key_function_callback_t short_press_callback; ///< 短按的回调函数,包括单击/双击/多击等处理
                                                        // struct key_param *next;                                              ///< 保留用于未来,使用链表创建多个按键的单击,双击以及多击ETS_GPIO_INTR_DISABLE
@@ -104,7 +105,7 @@ typedef struct key_time_params
  */
 int32_t user_key_init(key_config_t *key_config,
                       uint8_t key_counts,
-                      uint16_t decoune_timer,
+                      uint64_t decoune_timer,
                       user_key_function_callback_t long_pressed_cb,
                       user_key_function_callback_t short_pressed_cb);
 

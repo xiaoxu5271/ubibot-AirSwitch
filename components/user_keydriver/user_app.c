@@ -22,8 +22,10 @@
 // #include "Http.h"
 #include "Led.h"
 // #include "Cache_data.h"
-
 #include "user_key.h"
+
+#define TAG "KEY"
+
 uint8_t Task_key_num = 0;
 TaskHandle_t view_sys_handle = NULL;
 TaskHandle_t User_Key_handle = NULL;
@@ -31,8 +33,8 @@ TaskHandle_t User_Key_handle = NULL;
 /* 填充需要配置的按键个数以及对应的相关参数 */
 static key_config_t gs_m_key_config[BOARD_BUTTON_COUNT] =
     {
-        {BOARD_BUTTON, APP_KEY_ACTIVE_LOW, 0, LONG_PRESSED_TIMER},
-};
+        {KEY_TEST, APP_KEY_ACTIVE_LOW, 0, LONG_PRESSED_TIMER},
+        {BOARD_BUTTON, APP_KEY_ACTIVE_LOW, 0, LONG_PRESSED_TIMER}};
 
 /** 
  * 用户的短按处理函数
@@ -45,13 +47,14 @@ static key_config_t gs_m_key_config[BOARD_BUTTON_COUNT] =
  */
 void short_pressed_cb(uint8_t key_num, uint8_t *short_pressed_counts)
 {
+    ESP_LOGI(TAG, "short_pressed_cb key_num:%d,short_pressed_counts:%d", key_num, *short_pressed_counts);
     switch (key_num)
     {
     case BOARD_BUTTON:
         switch (*short_pressed_counts)
         {
         case 1:
-            ESP_LOGI("short_pressed_cb", "first press!!!\n");
+            ESP_LOGI(TAG, "BOARD_BUTTON first press!!!\n");
             // Task_key_num = 1;
             Switch_Relay(-1);
             // vTaskNotifyGiveFromISR(User_Key_handle, NULL);
@@ -81,6 +84,26 @@ void short_pressed_cb(uint8_t key_num, uint8_t *short_pressed_counts)
             break;
             // case ....:
             // break;
+
+        default:
+            break;
+        }
+        *short_pressed_counts = 0;
+        break;
+
+    case KEY_TEST:
+        switch (*short_pressed_counts)
+        {
+        case 1:
+            Start_Leak_Test();
+            ESP_LOGI(TAG, "KEY_TEST first press!\n");
+            break;
+
+        case 2:
+            ESP_LOGI(TAG, "KEY_TEST double press!\n");
+            // Task_key_num = 2;
+            // vTaskNotifyGiveFromISR(User_Key_handle, NULL);
+            break;
 
         default:
             break;

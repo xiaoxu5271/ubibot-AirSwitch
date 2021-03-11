@@ -25,34 +25,69 @@ uint64_t SW_last_time = 0, SW_on_time = 0;
 bool sw_sta = false; //1 合闸
 bool f_sta = false;  //0 复位
 bool m_sta = false;  //0 复位
-//切换继电器
+
+void timer_trip_cb(void *arg);
+esp_timer_handle_t timer_trip_handle = NULL; //定时器句柄
+esp_timer_create_args_t timer_trip_arg = {
+    .callback = &timer_trip_cb,
+    .arg = NULL,
+    .name = "Trip_Timer"};
+
+void timer_motor_cb(void *arg);
+esp_timer_handle_t timer_motor_handle = NULL; //定时器句柄
+esp_timer_create_args_t timer_motor_arg = {
+    .callback = &timer_motor_cb,
+    .arg = NULL,
+    .name = "Motor_Timer"};
+
+void timer_test_cb(void *arg);
+esp_timer_handle_t timer_test_handle = NULL; //定时器句柄
+esp_timer_create_args_t timer_test_arg = {
+    .callback = &timer_test_cb,
+    .arg = NULL,
+    .name = "Test_Timer"};
+
+void timer_motor_cb(void *arg)
+{
+    //电机运转超时（电机损坏）
+    gpio_set_level(M_IN1, 1);
+    gpio_set_level(M_IN2, 1);
+    ESP_LOGE(TAG, "MOTOR ERROR");
+}
+
+void timer_trip_cb(void *arg)
+{
+    //停止脱扣器供电
+    gpio_set_level(EN_TRIP, 0);
+}
+
+void timer_test_cb(void *arg)
+{
+    //停止漏电测试
+    gpio_set_level(EN_TEST, 0);
+}
+
+void Start_Leak_Test(void)
+{
+    gpio_set_level(EN_TEST, 1);
+    esp_timer_start_once(timer_test_handle, TEST_EN_TIME);
+}
+
 void Switch_Relay(int8_t set_value)
 {
     if (set_value == -1)
     {
         if (sw_sta == 1) //分闸
         {
-            gpio_set_level(TRIP_EN, 1);
-            vTaskDelay(100 / portTICK_PERIOD_MS);
-            gpio_set_level(TRIP_EN, 0);
+            gpio_set_level(EN_TRIP, 1);
+            esp_timer_start_once(timer_trip_handle, TRIP_EN_TIME);
         }
         else //和闸
         {
             gpio_set_level(M_IN1, 0);
             gpio_set_level(M_IN2, 1);
 
-            if ((xEventGroupWaitBits(Sw_sta_group, M_STA_BIT, true, true, 1000 / portTICK_RATE_MS) & M_STA_BIT) == M_STA_BIT)
-            {
-                gpio_set_level(M_IN1, 1);
-                gpio_set_level(M_IN2, 1);
-                ESP_LOGI(TAG, "MOTOR IS REST");
-            }
-            else
-            {
-                gpio_set_level(M_IN1, 1);
-                gpio_set_level(M_IN2, 1);
-                ESP_LOGE(TAG, "MOTOR ERROR");
-            }
+            esp_timer_start_once(timer_motor_handle, MOTOR_OUT_TIME);
         }
 
         // memcpy(C_TYPE, "physical", 9);
@@ -150,7 +185,7 @@ static void IRAM_ATTR gpio_isr_handler(void *arg)
 void HALL_Task(void *arg)
 {
     uint32_t io_num;
-    printf("HALL_Task\r\n");
+    // printf("HALL_Task\r\n");
     for (;;)
     {
         if (xQueueReceive(gpio_evt_queue, &io_num, portMAX_DELAY))
@@ -164,7 +199,11 @@ void HALL_Task(void *arg)
                 //齿轮复位
                 if (m_sta == 0)
                 {
-                    xEventGroupSetBits(Sw_sta_group, M_STA_BIT);
+                    esp_timer_stop(timer_motor_handle);
+                    gpio_set_level(M_IN1, 1);
+                    gpio_set_level(M_IN2, 1);
+                    ESP_LOGI(TAG, "MOTOR IS REST");
+                    // xEventGroupSetBits(Sw_sta_group, M_STA_BIT);
                 }
                 break;
 
@@ -194,11 +233,12 @@ void Switch_Init(void)
     io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
 
     //电机
-    io_conf.pin_bit_mask = ((1 << M_IN1) | (1 << M_IN2) | (1 << TRIP_EN));
+    io_conf.pin_bit_mask = ((1 << M_IN1) | (1 << M_IN2) | (1 << EN_TRIP) | (1 << EN_TEST));
     gpio_config(&io_conf);
     gpio_set_level(M_IN1, 0);
     gpio_set_level(M_IN2, 0);
-    gpio_set_level(TRIP_EN, 0);
+    gpio_set_level(EN_TRIP, 0);
+    gpio_set_level(EN_TEST, 0);
 
     io_conf.intr_type = GPIO_INTR_ANYEDGE;
     io_conf.mode = GPIO_MODE_INPUT;
@@ -209,6 +249,9 @@ void Switch_Init(void)
 
     gpio_evt_queue = xQueueCreate(10, sizeof(uint32_t));
     xTaskCreate(HALL_Task, "gpio_task_example", 2048, NULL, 10, NULL);
+    esp_timer_create(&timer_trip_arg, &timer_trip_handle);
+    esp_timer_create(&timer_motor_arg, &timer_motor_handle);
+    esp_timer_create(&timer_test_arg, &timer_test_handle);
 
     gpio_install_isr_service(ESP_INTR_FLAG_IRAM);
     gpio_isr_handler_add(HALL_M, gpio_isr_handler, (void *)HALL_M);

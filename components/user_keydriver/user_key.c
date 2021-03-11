@@ -22,6 +22,7 @@
 #include "freertos/queue.h"
 #include "sys/time.h"
 
+#define TAG "USER_KEY"
 /*
 ===========================
 全局变量
@@ -41,6 +42,9 @@ static uint64_t gs_key_transition = 0;
 static uint8_t gs_key_counts;
 /* 存放传进来的按键设置参数 */
 static key_config_t *gs_m_key_config = NULL;
+/* 存放具体是第几组按键触发 */
+static uint8_t gs_key_no = 0;
+
 /*
 ===========================
 函数定义
@@ -71,13 +75,13 @@ static void short_pressed_cb(uint8_t pin_no, uint8_t key_action)
     case APP_KEY_PUSH:
         esp_timer_stop(gs_m_key_time_params.short_press_time_handle);
         esp_timer_start_once(gs_m_key_time_params.long_press_time_handle, s_m_key_config->long_pressed_time);
-        // ESP_LOGI("short_pressed_cb", "APP_KEY_PUSH\n");
+        //ESP_LOGI("short_pressed_cb", "APP_KEY_PUSH\n");
         break;
     case APP_KEY_RELEASE:
-        // ESP_LOGI("short_pressed_cb", "APP_KEY_RELEASE\n");
+        //ESP_LOGI("short_pressed_cb", "APP_KEY_RELEASE\n");
         esp_timer_stop(gs_m_key_time_params.long_press_time_handle);
         /* 如果按键的按下与释放的时间小于MULTI_PRESSED_TIMER则认为是整个短按按键动作完成 */
-        // ESP_LOGI("short_pressed_cb", "current_time - last_time is %lld\n", current_time - last_time);
+        //ESP_LOGI("short_pressed_cb", "current_time - last_time is %lld\n key_num:%d", current_time - last_time, s_m_key_config->key_number);
         if ((current_time - last_time) < MULTI_PRESSED_TIMER)
         {
             s_m_key_config->short_pressed_counts++;
@@ -104,7 +108,8 @@ static void short_pressed_cb(uint8_t pin_no, uint8_t key_action)
  */
 static void short_press_time_out_handle(void *arg)
 {
-    key_config_t *s_key_config = (key_config_t *)arg;
+    key_config_t *s_key_config = (key_config_t *)arg + gs_key_no;
+    // ESP_LOGI(TAG, "%d,key_num:%d", __LINE__, s_key_config->key_number);
     gs_m_key_param.short_press_callback(s_key_config->key_number, &(s_key_config->short_pressed_counts));
 }
 
@@ -118,7 +123,8 @@ static void short_press_time_out_handle(void *arg)
  */
 static void long_press_time_out_handle(void *arg)
 {
-    key_config_t *s_key_config = (key_config_t *)arg;
+    key_config_t *s_key_config = (key_config_t *)arg + gs_key_no;
+    //ESP_LOGI(TAG, "%d,key_num:%d", __LINE__, s_key_config->key_number);
     gs_m_key_param.long_press_callback(s_key_config->key_number, &(s_key_config->short_pressed_counts));
 }
 /** 
@@ -131,6 +137,7 @@ static void long_press_time_out_handle(void *arg)
  */
 static void after_key_decounce_cb(void *arg)
 {
+    //ESP_LOGW(TAG, "%d", __LINE__);
     // printf("after_key\n");
     /* 轮询判断是哪个GPIO */
     for (uint8_t i = 0; i < gs_key_counts; i++)
@@ -140,6 +147,7 @@ static void after_key_decounce_cb(void *arg)
         /* 消抖之后,如果找到对应的GPIO的电平发生转移,则再判断电平是否与进入中断时一致 */
         if (gs_key_transition & key_mask)
         {
+            //ESP_LOGW(TAG, "%d", __LINE__);
             /* 将对应的gpio电平转移标志位清0 */
             gs_key_transition &= ~key_mask;
             bool key_level = gpio_get_level(local_key_config->key_number);
@@ -147,6 +155,8 @@ static void after_key_decounce_cb(void *arg)
             if ((gs_key_state & (1ULL << local_key_config->key_number)) ==
                 (((uint64_t)key_level) << local_key_config->key_number))
             {
+                //ESP_LOGW(TAG, "%d", __LINE__);
+                gs_key_no = i;
                 short_pressed_cb(i, key_level);
             }
         }
@@ -181,29 +191,38 @@ static void gpio_intr_task_thread(void *arg)
 {
     uint32_t key_num;
     uint64_t key_mask;
+    esp_err_t ret;
     for (;;)
     {
         /* 不断从队列中查询是否有消息 */
         if (xQueueReceive(gpio_evt_queue, &key_num, portMAX_DELAY))
         {
+            //ESP_LOGW(TAG, "%d", __LINE__);
+            // ESP_LOGI(TAG, "key_num:%d,level:%d", key_num, gpio_get_level(key_num));
             key_mask = 1ULL << key_num;
             /* 判断引起中断的GPIO口是不是已经发生过电平转移,如果发生了则不处理 */
-            // if (!(gs_key_transition & key_mask))
-            // {
-            // printf("key_isr\n");
-            switch (gpio_get_level(key_num))
+            if (!(gs_key_transition & key_mask))
             {
-            case 0:
-                gs_key_state &= ~(key_mask);
-                break;
-            case 1:
-                gs_key_state |= (key_mask);
-                break;
+                //ESP_LOGW(TAG, "%d", __LINE__);
+                // printf("key_isr\n");
+                switch (gpio_get_level(key_num))
+                {
+                case 0:
+                    gs_key_state &= ~(key_mask);
+                    break;
+                case 1:
+                    gs_key_state |= (key_mask);
+                    break;
+                }
+                gs_key_transition |= key_mask;
+                /* 开启消抖计时定时器 */
+
+                ret = esp_timer_start_once(gs_m_key_time_params.key_decounce_time_handle, gs_m_key_param.decounce_time);
+                if (ret != ESP_OK)
+                {
+                    ESP_LOGE(TAG, "%d,%d", __LINE__, ret);
+                }
             }
-            gs_key_transition |= key_mask;
-            /* 开启消抖计时定时器 */
-            esp_timer_start_once(gs_m_key_time_params.key_decounce_time_handle, gs_m_key_param.decounce_time);
-            // }
         }
     }
 }
@@ -224,7 +243,7 @@ static void gpio_intr_task_thread(void *arg)
  */
 int32_t user_key_init(key_config_t *key_config,
                       uint8_t key_counts,
-                      uint16_t decoune_timer,
+                      uint64_t decoune_timer,
                       user_key_function_callback_t long_pressed_cb,
                       user_key_function_callback_t short_pressed_cb)
 {
@@ -274,7 +293,7 @@ int32_t user_key_init(key_config_t *key_config,
         err_code = gpio_config(&m_gpio_config);
         if (err_code != ESP_OK)
         {
-            ESP_LOGE("user_key_int", "gpio_config is %d\n", err_code);
+            //ESP_LOGE("user_key_int", "gpio_config is %d\n", err_code);
             return err_code;
         }
         /* 注册中调回调函数,并将触发中断的GPIO口传进中断处理函数 */
@@ -286,7 +305,7 @@ int32_t user_key_init(key_config_t *key_config,
         err_code = gpio_set_intr_type((key_config + i)->key_number, GPIO_INTR_ANYEDGE);
         if (err_code != ESP_OK)
         {
-            ESP_LOGE("user_key_init", "gpio_set_intr_type is %d\n", err_code);
+            //ESP_LOGE("user_key_init", "gpio_set_intr_type is %d\n", err_code);
             return err_code;
         }
     }
@@ -303,7 +322,7 @@ int32_t user_key_init(key_config_t *key_config,
     err_code = xTaskCreate(gpio_intr_task_thread, "gpio_intr_task_thread", 256 * 8, NULL, 17, NULL);
     if (err_code != pdPASS)
     {
-        ESP_LOGE("user_key_init", "xTaskCreate is %d\n", err_code);
+        //ESP_LOGE("user_key_init", "xTaskCreate is %d\n", err_code);
         return err_code;
     }
     /* 填充消抖定时器所需要的相关参数并创建消抖计时函数 */
@@ -317,7 +336,7 @@ int32_t user_key_init(key_config_t *key_config,
     err_code = esp_timer_create(&esp_decounce_timer_args, &gs_m_key_time_params.key_decounce_time_handle);
     if (err_code != ESP_OK)
     {
-        ESP_LOGE("user_key_init", "esp_decounce_timer is %d\n", err_code);
+        //ESP_LOGE("user_key_init", "esp_decounce_timer is %d\n", err_code);
         return err_code;
     }
     /* 填充按键按下并释放之后延时一段时间判断是否有新的按键动作按下所需要的相关参数并创建对应的计时函数 */
@@ -331,7 +350,7 @@ int32_t user_key_init(key_config_t *key_config,
     err_code = esp_timer_create(&esp_short_press_timer_args, &gs_m_key_time_params.short_press_time_handle);
     if (err_code != ESP_OK)
     {
-        ESP_LOGE("user_key_init", "esp_short_press_timer is %d\n", err_code);
+        //ESP_LOGE("user_key_init", "esp_short_press_timer is %d\n", err_code);
         return err_code;
     }
     /* 填充按键长按所需要的时间相关参数并创建对应的计时函数 */
