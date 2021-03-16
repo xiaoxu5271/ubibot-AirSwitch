@@ -77,37 +77,15 @@ static void Led_Task(void *arg)
             vTaskDelay(500 / portTICK_RATE_MS);
         }
         //开关以及网络
-        // else
-        // {
-        //     if (cg_data_led == 1)
-        //     {
-        //         //开关
-        //         if (mqtt_json_s.mqtt_switch_status == true)
-        //         {
-        //             //网络
-        //             if (Net_sta_flag == true)
-        //             {
-        //                 Led_Off();
-        //                 Led_B_On();
-        //             }
-        //             else
-        //             {
-        //                 Led_Off();
-        //                 Led_Y_On();
-        //             }
-        //         }
-        //         else
-        //         {
-        //             Led_Off();
-        //         }
-        //         vTaskDelay(100 / portTICK_RATE_MS);
-        //     }
-        //     else
-        //     {
-        //         Led_Off();
-        //         vTaskDelay(100 / portTICK_RATE_MS);
-        //     }
-        // }
+        else
+        {
+            Led_Off();
+            Led_B_On();
+            vTaskDelay(500 / portTICK_RATE_MS);
+            Led_Off();
+            Led_Y_On();
+            vTaskDelay(500 / portTICK_RATE_MS);
+        }
     }
 }
 

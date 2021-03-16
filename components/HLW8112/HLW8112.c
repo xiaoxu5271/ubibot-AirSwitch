@@ -16,8 +16,10 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/queue.h"
+#include "freertos/semphr.h"
 #include "driver/gpio.h"
 #include "esp_log.h"
+#include "Switch.h"
 
 //extern unsigned char UART_EN;
 //extern unsigned char SPI_EN;
@@ -25,6 +27,9 @@
 #define HIGH 1
 #define LOW 0
 
+SemaphoreHandle_t HLW_muxtex = NULL;
+
+#define TAG "HLW8112"
 union IntData
 {
     uint16_t inte;
@@ -89,6 +94,8 @@ float F_AC_LINE_Freq; //市电线性频率
 float F_IF_RegData;   //IF寄存器值
                       //--------------------------------------------------------------------------------------------
 
+static xQueueHandle HLW_INT_evt_queue = NULL;
+
 void delay_us(uint32_t us)
 {
     ets_delay_us(us);
@@ -103,6 +110,7 @@ void delay_us(uint32_t us)
 =====================================================*/
 void HLW8112_SPI_WriteByte(unsigned char u8_data)
 {
+
     unsigned char i;
     unsigned char x;
     x = u8_data;
@@ -130,6 +138,7 @@ void HLW8112_SPI_WriteByte(unsigned char u8_data)
 =====================================================*/
 unsigned char HLW8112_SPI_ReadByte(void)
 {
+
     unsigned char i;
     unsigned char u8_data;
     u8_data = 0x00;
@@ -430,55 +439,6 @@ void Set_V_Zero(void)
 }
 
 /*=====================================================
- * Function : void Set_Leakage(void)
- * Describe : 电流B通道漏电检测功能，只能用比较器功能,INT2输出
- * Input    : none
- * Output   : none
- * Return   : none
- * Record   : 2019/03/18
-=====================================================*/
-void Set_Leakage(void)
-{
-    unsigned int a;
-
-    HLW8112_WriteREG_EN(); //打开写8112 Reg
-
-    gpio_set_level(HLW_SCSN, 0);
-    HLW8112_SPI_WriteReg(REG_SYSCON_ADDR);
-    HLW8112_SPI_WriteByte(0x0a); //-------------高8bit，关闭ADC电流通道B
-    HLW8112_SPI_WriteByte(0x04); //-------------低8bit，
-    gpio_set_level(HLW_SCSN, 1);
-
-    //设置comp_off = 1,打开B通道比较器
-    a = Read_HLW8112_RegData(REG_EMUCON_ADDR, 2);
-    gpio_set_level(HLW_SCSN, 0);
-    HLW8112_SPI_WriteReg(REG_EMUCON_ADDR);
-    HLW8112_SPI_WriteByte((a >> 8) & 0xcf); //   打开比较器
-    HLW8112_SPI_WriteByte(a & 0xfd);
-    gpio_set_level(HLW_SCSN, 1);
-
-    //设置INT寄存器, INT2比较器漏电输出
-    a = Read_HLW8112_RegData(REG_INT_ADDR, 2);
-    gpio_set_level(HLW_SCSN, 0);
-    HLW8112_SPI_WriteReg(REG_INT_ADDR);
-    HLW8112_SPI_WriteByte((a >> 8));
-    HLW8112_SPI_WriteByte(0x29);
-    gpio_set_level(HLW_SCSN, 1);
-
-    //设置IE寄存器, IE
-    a = Read_HLW8112_RegData(REG_IE_ADDR, 2);
-    gpio_set_level(HLW_SCSN, 0);
-    HLW8112_SPI_WriteReg(REG_IE_ADDR);
-    HLW8112_SPI_WriteByte((a >> 8) | 0x80); //漏电中断使能，LeakageIE= 1
-    HLW8112_SPI_WriteByte(a & 0xff);
-    gpio_set_level(HLW_SCSN, 1);
-
-    U16_TempData = Read_HLW8112_RegData(REG_IE_ADDR, 2);
-
-    HLW8112_WriteREG_DIS(); //关闭写8112 Reg
-}
-
-/*=====================================================
  * Function : void Set_OIB(void)
  * Describe : 电流B通道 过流检测,INT2输出
  * Input    : none
@@ -486,38 +446,48 @@ void Set_Leakage(void)
  * Return   : none
  * Record   : 2019/03/18
 =====================================================*/
-void Set_OIB(void)
+
+void Set_OIB(float Set_I)
 {
     unsigned int a;
+    uint32_t Set_Reg;
+    // Set_Reg = (uint32_t)(L_I_reg / L_I * Set_I * 1.414) >> 7;
+    Set_Reg = (uint32_t)(0x800000 * K_B_I * Set_I * 1.414 * 1000 / U16_RMSIBC_RegData) >> 7;
+    ESP_LOGI(TAG, "Set_OIB Set_Reg:,%d,%08X,U16_RMSIBC_RegData:%d", Set_Reg, Set_Reg, U16_RMSIBC_RegData);
 
     HLW8112_WriteREG_EN(); //打开写8112 Reg
-
     gpio_set_level(HLW_SCSN, 0);
     HLW8112_SPI_WriteReg(REG_OIBLVL_ADDR);
-    HLW8112_SPI_WriteByte(0x00);
-    HLW8112_SPI_WriteByte(0x20);
+    HLW8112_SPI_WriteByte(Set_Reg >> 8);
+    HLW8112_SPI_WriteByte(Set_Reg & 0xff);
     gpio_set_level(HLW_SCSN, 1);
     U16_TempData = Read_HLW8112_RegData(REG_OIBLVL_ADDR, 2);
+    if (U16_TempData != Set_Reg)
+    {
+        ESP_LOGE(TAG, "Set_OIB ERROR,read Set_Reg:%d", Set_Reg);
+    }
+    else
+    {
+        //设置INT寄存器,INT2 开启B通道过流信号指示输出，INT1 电压过零
+        gpio_set_level(HLW_SCSN, 0);
+        HLW8112_SPI_WriteReg(REG_INT_ADDR);
+        HLW8112_SPI_WriteByte(0x32);
+        // HLW8112_SPI_WriteByte(0xc9);
+        HLW8112_SPI_WriteByte(0xF9); //
+        gpio_set_level(HLW_SCSN, 1);
 
-    //设置INT寄存器,
-    gpio_set_level(HLW_SCSN, 0);
-    HLW8112_SPI_WriteReg(REG_INT_ADDR);
-    HLW8112_SPI_WriteByte(0x32);
-    // HLW8112_SPI_WriteByte(0xc9);
-    HLW8112_SPI_WriteByte(0xF9); //
-    gpio_set_level(HLW_SCSN, 1);
+        //设置IE寄存器, IE
+        a = Read_HLW8112_RegData(REG_IE_ADDR, 2);
+        gpio_set_level(HLW_SCSN, 0);
+        HLW8112_SPI_WriteReg(REG_IE_ADDR);
+        HLW8112_SPI_WriteByte((a >> 8) | 0x01);
+        // HLW8112_SPI_WriteByte((a >> 8) | 0x02); //电压过压中断使能，OVIE= 1
+        // 										// HLW8112_SPI_WriteByte(0x02); //电压过压中断使能，OVIE= 1
+        HLW8112_SPI_WriteByte(a & 0xff);
+        gpio_set_level(HLW_SCSN, 1);
 
-    //设置IE寄存器, IE
-    a = Read_HLW8112_RegData(REG_IE_ADDR, 2);
-    gpio_set_level(HLW_SCSN, 0);
-    HLW8112_SPI_WriteReg(REG_IE_ADDR);
-    HLW8112_SPI_WriteByte((a >> 8) | 0x01);
-    // HLW8112_SPI_WriteByte((a >> 8) | 0x02); //电压过压中断使能，OVIE= 1
-    // 										// HLW8112_SPI_WriteByte(0x02); //电压过压中断使能，OVIE= 1
-    HLW8112_SPI_WriteByte(a & 0xff);
-    gpio_set_level(HLW_SCSN, 1);
-
-    U16_TempData = Read_HLW8112_RegData(REG_IE_ADDR, 2);
+        U16_TempData = Read_HLW8112_RegData(REG_IE_ADDR, 2);
+    }
 
     HLW8112_WriteREG_DIS(); //关闭写8112 Reg
 }
@@ -530,83 +500,83 @@ void Set_OIB(void)
  * Return   : none
  * Record   : 2018/05/09
 =====================================================*/
-void Init_HLW8112(void)
-{
+// void Init_HLW8112(void)
+// {
 
-    //SPI init
-    vTaskDelay(100 / portTICK_PERIOD_MS);
+//     //SPI init
+//     vTaskDelay(100 / portTICK_PERIOD_MS);
 
-    gpio_config_t io_conf;
-    io_conf.intr_type = GPIO_PIN_INTR_DISABLE;
-    io_conf.mode = GPIO_MODE_OUTPUT;
-    io_conf.pin_bit_mask = ((1ULL << HLW_SCSN) | (1ULL << HLW_SCLK) | (1ULL << HLW_SDI));
-    io_conf.pull_down_en = 0;
-    io_conf.pull_up_en = 0;
-    gpio_config(&io_conf);
+//     gpio_config_t io_conf;
+//     io_conf.intr_type = GPIO_PIN_INTR_DISABLE;
+//     io_conf.mode = GPIO_MODE_OUTPUT;
+//     io_conf.pin_bit_mask = ((1ULL << HLW_SCSN) | (1ULL << HLW_SCLK) | (1ULL << HLW_SDI));
+//     io_conf.pull_down_en = 0;
+//     io_conf.pull_up_en = 0;
+//     gpio_config(&io_conf);
 
-    io_conf.intr_type = GPIO_PIN_INTR_DISABLE;
-    io_conf.mode = GPIO_MODE_INPUT;
-    io_conf.pin_bit_mask = ((1ULL << HLW_SDO) | (1ULL << HLW_INT2) | (1ULL << HLW_INT2));
-    io_conf.pull_down_en = 1;
-    io_conf.pull_up_en = 0;
-    gpio_config(&io_conf);
+//     io_conf.intr_type = GPIO_PIN_INTR_DISABLE;
+//     io_conf.mode = GPIO_MODE_INPUT;
+//     io_conf.pin_bit_mask = ((1ULL << HLW_SDO) | (1ULL << HLW_INT2) | (1ULL << HLW_INT2));
+//     io_conf.pull_down_en = 1;
+//     io_conf.pull_up_en = 0;
+//     gpio_config(&io_conf);
 
-    vTaskDelay(10 / portTICK_PERIOD_MS);
-    gpio_set_level(HLW_SCSN, 1);
-    delay_us(2);
-    delay_us(2);
+//     vTaskDelay(10 / portTICK_PERIOD_MS);
+//     gpio_set_level(HLW_SCSN, 1);
+//     delay_us(2);
+//     delay_us(2);
 
-    gpio_set_level(HLW_SCLK, 0);
-    delay_us(2);
-    gpio_set_level(HLW_SDI, 0);
-    HLW8112_WriteREG_EN(); //打开写8112 Reg
-                           // ea + 5a 电流通道A设置命令，指定当前用于计算视在功率、功率因数、相角、
-                           //瞬时有功功率、瞬时视在功率和有功功率过载的信号指示 的通道为通道A
-                           // ea + a5 电流通道A设置命令，指定当前用于计算视在功率、功率因数、相角、
-                           //瞬时有功功率、瞬时视在功率和有功功率过载的信号指示 的通道为通道A
-    gpio_set_level(HLW_SCSN, 0);
-    HLW8112_SPI_WriteByte(0xea);
-    HLW8112_SPI_WriteByte(0x5a);
-    gpio_set_level(HLW_SCSN, 1);
+//     gpio_set_level(HLW_SCLK, 0);
+//     delay_us(2);
+//     gpio_set_level(HLW_SDI, 0);
+//     HLW8112_WriteREG_EN(); //打开写8112 Reg
+//                            // ea + 5a 电流通道A设置命令，指定当前用于计算视在功率、功率因数、相角、
+//                            //瞬时有功功率、瞬时视在功率和有功功率过载的信号指示 的通道为通道A
+//                            // ea + a5 电流通道A设置命令，指定当前用于计算视在功率、功率因数、相角、
+//                            //瞬时有功功率、瞬时视在功率和有功功率过载的信号指示 的通道为通道A
+//     gpio_set_level(HLW_SCSN, 0);
+//     HLW8112_SPI_WriteByte(0xea);
+//     HLW8112_SPI_WriteByte(0x5a);
+//     gpio_set_level(HLW_SCSN, 1);
 
-    //写SYSCON REG, 关闭电流通道B，电压通道 PGA = 1，电流通道A PGA =  16;
-    //三路通道满幅值（峰峰值800ma,有效值/1.414 = 565mV）
-    gpio_set_level(HLW_SCSN, 0);
-    HLW8112_SPI_WriteReg(REG_SYSCON_ADDR);
-    //HLW8112_SPI_WriteByte(0x0a);         //开启电流通道A,PGA = 16   ------高8bit
-    HLW8112_SPI_WriteByte(0x0f); //开启电流通道A和电流通道B PGA =  16;需要在EMUCON中关闭比较器------高8bit
-    HLW8112_SPI_WriteByte(0x04); //-------------低8bit
-    gpio_set_level(HLW_SCSN, 1);
+//     //写SYSCON REG, 关闭电流通道B，电压通道 PGA = 1，电流通道A PGA =  16;
+//     //三路通道满幅值（峰峰值800ma,有效值/1.414 = 565mV）
+//     gpio_set_level(HLW_SCSN, 0);
+//     HLW8112_SPI_WriteReg(REG_SYSCON_ADDR);
+//     //HLW8112_SPI_WriteByte(0x0a);         //开启电流通道A,PGA = 16   ------高8bit
+//     HLW8112_SPI_WriteByte(0x0f); //开启电流通道A和电流通道B PGA =  16;需要在EMUCON中关闭比较器------高8bit
+//     HLW8112_SPI_WriteByte(0x04); //-------------低8bit
+//     gpio_set_level(HLW_SCSN, 1);
 
-    //写EMUCON REG, 使能A通道PF脉冲输出和有功能电能寄存器累加
-    gpio_set_level(HLW_SCSN, 0);
-    HLW8112_SPI_WriteReg(REG_EMUCON_ADDR);
-    HLW8112_SPI_WriteByte(0x10); //最高位一定设置成0001，关闭比较器,打开B通道
-    HLW8112_SPI_WriteByte(0x03); //打开A通道和B通道电量累计功能
-    gpio_set_level(HLW_SCSN, 1);
+//     //写EMUCON REG, 使能A通道PF脉冲输出和有功能电能寄存器累加
+//     gpio_set_level(HLW_SCSN, 0);
+//     HLW8112_SPI_WriteReg(REG_EMUCON_ADDR);
+//     HLW8112_SPI_WriteByte(0x10); //最高位一定设置成0001，关闭比较器,打开B通道
+//     HLW8112_SPI_WriteByte(0x03); //打开A通道和B通道电量累计功能
+//     gpio_set_level(HLW_SCSN, 1);
 
-    //写EMUCON2 REG, 3.4HZ数据输出，选择内部基准,打开过压、过流等功能
-    //3.4HZ(300ms) 6.8HZ(150ms) 13.65HZ(75ms) 27.3HZ(37.5ms)
-    gpio_set_level(HLW_SCSN, 0);
-    HLW8112_SPI_WriteReg(REG_EMUCON2_ADDR);
-    HLW8112_SPI_WriteByte(0x0f); //电量寄存器读后不清零
-    HLW8112_SPI_WriteByte(0xff);
-    gpio_set_level(HLW_SCSN, 1);
+//     //写EMUCON2 REG, 3.4HZ数据输出，选择内部基准,打开过压、过流等功能
+//     //3.4HZ(300ms) 6.8HZ(150ms) 13.65HZ(75ms) 27.3HZ(37.5ms)
+//     gpio_set_level(HLW_SCSN, 0);
+//     HLW8112_SPI_WriteReg(REG_EMUCON2_ADDR);
+//     HLW8112_SPI_WriteByte(0x0f); //电量寄存器读后不清零
+//     HLW8112_SPI_WriteByte(0xff);
+//     gpio_set_level(HLW_SCSN, 1);
 
-    //关闭所有中断
-    gpio_set_level(HLW_SCSN, 0);
-    HLW8112_SPI_WriteReg(REG_IE_ADDR);
-    HLW8112_SPI_WriteByte(0x00);
-    HLW8112_SPI_WriteByte(0x00);
-    gpio_set_level(HLW_SCSN, 1);
+//     //关闭所有中断
+//     gpio_set_level(HLW_SCSN, 0);
+//     HLW8112_SPI_WriteReg(REG_IE_ADDR);
+//     HLW8112_SPI_WriteByte(0x00);
+//     HLW8112_SPI_WriteByte(0x00);
+//     gpio_set_level(HLW_SCSN, 1);
 
-    // Set_V_Zero(); //设置INT1
-    // Set_OIB();    //B通道过流
+//     // Set_V_Zero(); //设置INT1
+//     // Set_OIB();    //B通道过流
 
-    // Set_OVLVL();          //设置INT2
-    //  Set_Leakage();        //设置INT2，打开B通道B较器
-    // return ret;
-}
+//     // Set_OVLVL();          //设置INT2
+//     //  Set_Leakage();        //设置INT2，打开B通道B较器
+//     // return ret;
+// }
 
 /*=========================================================================================================
  * Function : void Check_WriteReg_Success(void)
@@ -622,9 +592,9 @@ void Check_WriteReg_Success(void)
     U16_Check_EmuconReg_Data = Read_HLW8112_RegData(REG_EMUCON_ADDR, 2);
     U16_Check_Emucon2Reg_Data = Read_HLW8112_RegData(REG_EMUCON2_ADDR, 2);
 
-    // printf("写入的SysconReg寄存器:%x\n ", U16_Check_SysconReg_Data);
-    // printf("写入的EmuconReg寄存器:%x\n ", U16_Check_EmuconReg_Data);
-    // printf("写入的Emucon2Reg寄存器寄存器:%x\n ", U16_Check_Emucon2Reg_Data);
+    printf("写入的SysconReg寄存器:%x\n ", U16_Check_SysconReg_Data);
+    printf("写入的EmuconReg寄存器:%x\n ", U16_Check_EmuconReg_Data);
+    printf("写入的Emucon2Reg寄存器寄存器:%x\n ", U16_Check_Emucon2Reg_Data);
 }
 
 /*=====================================================
@@ -672,6 +642,7 @@ void Read_HLW8112_PB_I(void)
 
     //计算,U16_AC_I_B = (U32_RMSIB_RegData * U16_RMSIBC_RegData)/2^23
     U32_RMSIB_RegData = Read_HLW8112_RegData(REG_RMSIB_ADDR, 3);
+    ESP_LOGI(TAG, "U32_RMSIB_RegData:%ld", U32_RMSIB_RegData);
     if ((U32_RMSIB_RegData & 0x800000) == 0x800000)
     {
         F_AC_I_B = 0;
@@ -680,10 +651,10 @@ void Read_HLW8112_PB_I(void)
     {
         a = (float)U32_RMSIB_RegData;
         a = a * U16_RMSIBC_RegData;
-        a = a / 0x800000;  //电流计算出来的浮点数单位是mA,比如5003.12
-        a = a / K_B_I;     // 1 = 电流系数
-        a = a / 1000;      //a= 5003ma,a/1000 = 5.003A,单位转换成A
-        a = a * D_CAL_B_I; //D_CAL_B_I是校正系数，默认是1
+        a = a / 0x800000; //电流计算出来的浮点数单位是mA,比如5003.12
+        a = a / K_B_I;    // 1 = 电流系数
+        a = a / 1000;     //a= 5003ma,a/1000 = 5.003A,单位转换成A
+        // a = a * D_CAL_B_I; //D_CAL_B_I是校正系数，默认是1
         F_AC_I_B = a;
     }
 }
@@ -770,7 +741,7 @@ void Read_HLW8112_PB(void)
 
     //读取功率寄存器值
     U32_POWERPB_RegData = Read_HLW8112_RegData(REG_POWER_PB_ADDR, 4);
-
+    // ESP_LOGI(TAG, "U32_POWERPB_RegData:%ld", U32_POWERPB_RegData);
     //计算,U16_AC_P_B = (U32_POWERPB_RegData * U16_PowerPBC_RegData)/(1000*2^31)
 
     if (U32_POWERPB_RegData > 0x80000000)
@@ -1025,6 +996,7 @@ void Read_HLW8112_Angle(void)
 void Read_HLW8112_State(void)
 {
     //读取过压状态位,必须读取RIF状态，才能进入下一次中断
+    Read_HLW8112_RegData(REG_IE_ADDR, 2);
     U16_IFData = Read_HLW8112_RegData(REG_IF_ADDR, 2);
     U16_RIFData = Read_HLW8112_RegData(REG_RIF_ADDR, 2);
 }
@@ -1039,20 +1011,6 @@ void Read_HLW8112_State(void)
 =====================================================*/
 void HLW_Read_Task(void *arg)
 {
-    gpio_config_t io_conf;
-    io_conf.intr_type = GPIO_PIN_INTR_DISABLE;
-    io_conf.mode = GPIO_MODE_OUTPUT;
-    io_conf.pin_bit_mask = ((1ULL << HLW_SCSN) | (1ULL << HLW_SCLK) | (1ULL << HLW_SDI));
-    io_conf.pull_down_en = 0;
-    io_conf.pull_up_en = 0;
-    gpio_config(&io_conf);
-
-    io_conf.intr_type = GPIO_PIN_INTR_DISABLE;
-    io_conf.mode = GPIO_MODE_INPUT;
-    io_conf.pin_bit_mask = ((1ULL << HLW_SDO) | (1ULL << HLW_INT2) | (1ULL << HLW_INT2));
-    io_conf.pull_down_en = 1;
-    io_conf.pull_up_en = 0;
-    gpio_config(&io_conf);
 
     while (1)
     {
@@ -1112,77 +1070,160 @@ void HLW_Read_Task(void *arg)
         gpio_set_level(HLW_SCSN, 1);
 
         // Set_V_Zero(); //设置INT1
-        // Set_OIB();    //B通道过流
+        Set_OIB(0.02); //B通道过流
 
         // Set_OVLVL();          //设置INT2
         //  Set_Leakage();        //设置INT2，打开B通道B较器
-
         Check_WriteReg_Success();
 
-        Read_HLW8112_PA_I();
-        Read_HLW8112_U();
-        Read_HLW8112_PA();
-        Read_HLW8112_EA();
-        Read_HLW8112_Linefreq();
-        Read_HLW8112_Angle();
-        Read_HLW8112_State();
-        Read_HLW8112_PF();
-        Read_HLW8112_PB_I();
-        Read_HLW8112_PB();
-        Read_HLW8112_EB();
+        while (Judge_CheckSum_HLW8112_Calfactor())
+        {
+            xSemaphoreTake(HLW_muxtex, -1);
+            Read_HLW8112_PA_I();
+            Read_HLW8112_U();
+            Read_HLW8112_PA();
+            Read_HLW8112_EA();
+            Read_HLW8112_Linefreq();
+            Read_HLW8112_Angle();
+            Read_HLW8112_State();
+            Read_HLW8112_PF();
+            Read_HLW8112_PB_I();
+            Read_HLW8112_PB();
+            Read_HLW8112_EB();
+            xSemaphoreGive(HLW_muxtex);
 
-        // printf("交流测量-SPI通讯 \r\n");
+            // printf("交流测量-SPI通讯 \r\n");
 
-        // printf("\r\n\r\n"); //插入换行
-        // printf("A通道电能参数\r\n");
-        // printf("F_AC_V = %f V \n ", F_AC_V);   //电压
-        // printf("F_AC_I = %f A \n ", F_AC_I);   //A通道电流
-        // printf("F_AC_P = %f W \n ", F_AC_P);   //A通道功率
-        // printf("F_AC_E = %f KWH \n ", F_AC_E); //A通道电量
+            // printf("\r\n\r\n"); //插入换行
+            // printf("A通道电能参数\r\n");
+            // printf("F_AC_V = %f V \n ", F_AC_V);   //电压
+            printf("F_AC_I = %f A \n ", F_AC_I); //A通道电流
+            // printf("F_AC_P = %f W \n ", F_AC_P);   //A通道功率
+            // printf("F_AC_E = %f KWH \n ", F_AC_E); //A通道电量
 
-        // // printf("\r\n\r\n"); //插入换行
-        // printf("B通道电能参数\r\n");
-        printf("F_AC_I_B = %f A \n ", F_AC_I_B); //B通道电流
-        // printf("F_AC_P_B = %f W \n ", F_AC_P_B);   //B通道功率
-        // printf("F_AC_E_B = %f KWH \n ", F_AC_E_B); //B通道电量
+            // // printf("\r\n\r\n"); //插入换行
+            // printf("B通道电能参数\r\n");
+            printf("F_AC_I_B = %f A \n ", F_AC_I_B); //B通道电流
+                                                     // printf("F_AC_P_B = %f W \n ", F_AC_P_B); //B通道功率
+                                                     // printf("F_AC_E_B = %f KWH \n ", F_AC_E_B); //B通道电量
 
-        // printf("dat:%.3f,%.3f,%.3f\n", F_AC_V, F_AC_I, F_AC_P);
+            // printf("dat:%.3f,%.3f,%.3f\n", F_AC_V, F_AC_I, F_AC_P);
 
-        // printf("\r\n\r\n");                                   //插入换行
-        // printf("F_AC_PF = %f\n ", F_AC_PF);                   //A通道功率因素
-        // printf("F_AC_LINE_Freq = %f Hz \n ", F_AC_LINE_Freq); //F_AC_LINE_Freq
-        // printf("F_Angle = %f\n ", F_Angle);
+            // printf("\r\n\r\n");                                   //插入换行
+            // printf("F_AC_PF = %f\n ", F_AC_PF);                   //A通道功率因素
+            // printf("F_AC_LINE_Freq = %f Hz \n ", F_AC_LINE_Freq); //F_AC_LINE_Freq
+            // printf("F_Angle = %f\n ", F_Angle);
 
-        // printf("\r\n\r\n"); //插入换行
-        // printf("电能参数\r\n");
-        // printf("U32_RMSIA_RegData = %lx\n ", U32_RMSIA_RegData);
-        // printf("U32_RMSIB_RegData = %lx\n ", U32_RMSIB_RegData);
-        // printf("U32_RMSU_RegData = %lx\n ", U32_RMSU_RegData);
-        // printf("U32_POWERPA_RegData = %lx\n ", U32_POWERPA_RegData);
-        // printf("U32_POWERPB_RegData = %lx\n ", U32_POWERPB_RegData);
-        // printf("U16_AngleData = %x\n ", U16_AngleData);
-        // printf("U16_PFData = %x\n ", U16_PFData);
-        // printf("U16_LineFData = %x\n ", U16_LineFData);
-        // printf("U16_IFData = %x\n ", U16_IFData);
-        // printf("U16_RIFData = %x\n ", U16_RIFData);
+            // printf("\r\n\r\n"); //插入换行
+            // printf("电能参数\r\n");
+            // printf("U32_RMSIA_RegData = %lx\n ", U32_RMSIA_RegData);
+            // printf("U32_RMSIB_RegData = %lx\n ", U32_RMSIB_RegData);
+            // printf("U32_RMSU_RegData = %lx\n ", U32_RMSU_RegData);
+            // printf("U32_POWERPA_RegData = %lx\n ", U32_POWERPA_RegData);
+            // printf("U32_POWERPB_RegData = %lx\n ", U32_POWERPB_RegData);
+            // printf("U16_AngleData = %x\n ", U16_AngleData);
+            // printf("U16_PFData = %x\n ", U16_PFData);
+            // printf("U16_LineFData = %x\n ", U16_LineFData);
+            // printf("U16_IFData = %x\n ", U16_IFData);
+            // printf("U16_RIFData = %x\n ", U16_RIFData);
 
-        // printf("\r\n\r\n"); //插入换行
-        // printf("A通道电流转换系数:%x\n ", U16_RMSIAC_RegData);
-        // printf("B通道电流转换系数:%x\n ", U16_RMSIBC_RegData);
-        // printf("电压通道转换系数:%x\n ", U16_RMSUC_RegData);
-        // printf("A通道功率转换系数:%x\n ", U16_PowerPAC_RegData);
-        // printf("B通道功率转换系数:%x\n ", U16_PowerPBC_RegData);
-        // printf("A通道电量转换系数:%x\n ", U16_EnergyAC_RegData);
-        // printf("B通道电量转换系数:%x\n ", U16_EnergyBC_RegData);
-        // printf("U16_CheckSUM_RegData = %x\n ", U16_CheckSUM_RegData);
-        // printf("U16_CheckSUM_Data = %x\n ", U16_CheckSUM_Data);
+            // printf("\r\n\r\n"); //插入换行
+            // printf("A通道电流转换系数:%x\n ", U16_RMSIAC_RegData);
+            // printf("B通道电流转换系数:%x\n ", U16_RMSIBC_RegData);
+            // printf("电压通道转换系数:%x\n ", U16_RMSUC_RegData);
+            // printf("A通道功率转换系数:%x\n ", U16_PowerPAC_RegData);
+            // printf("B通道功率转换系数:%x\n ", U16_PowerPBC_RegData);
+            // printf("A通道电量转换系数:%x\n ", U16_EnergyAC_RegData);
+            // printf("B通道电量转换系数:%x\n ", U16_EnergyBC_RegData);
+            // printf("U16_CheckSUM_RegData = %x\n ", U16_CheckSUM_RegData);
+            // printf("U16_CheckSUM_Data = %x\n ", U16_CheckSUM_Data);
 
-        // printf("----------------------------------------------\r\n");
-        // printf("----------------------------------------------\r\n");
+            // printf("----------------------------------------------\r\n");
+            // printf("----------------------------------------------\r\n");
+            ulTaskNotifyTake(pdTRUE, -1);
+            // vTaskDelay(1000 / portTICK_RATE_MS);
+        }
+    }
+}
+
+static void IRAM_ATTR gpio_isr_handler(void *arg)
+{
+    uint32_t gpio_num = (uint32_t)arg;
+    xQueueSendFromISR(HLW_INT_evt_queue, &gpio_num, NULL);
+}
+
+void HLW_INT_Task(void *arg)
+{
+    uint32_t io_num;
+    // printf("HALL_Task\r\n");
+    for (;;)
+    {
+        if (xQueueReceive(HLW_INT_evt_queue, &io_num, portMAX_DELAY))
+        {
+            // ESP_LOGI(TAG, "GPIO[%d] intr, val: %d\n", io_num, gpio_get_level(io_num));
+
+            switch (io_num)
+            {
+            case HLW_INT2:
+                Switch_Relay(0);
+
+                xSemaphoreTake(HLW_muxtex, -1);
+                Read_HLW8112_State();
+                xSemaphoreGive(HLW_muxtex);
+
+                if (HLW_Read_Task_Hanlde != NULL)
+                {
+                    xTaskNotifyGive(HLW_Read_Task_Hanlde);
+                }
+                ESP_LOGI(TAG, "HLW_INT2");
+                break;
+
+            case HLW_INT1:
+                xSemaphoreTake(HLW_muxtex, -1);
+                Read_HLW8112_State();
+                xSemaphoreGive(HLW_muxtex);
+                // ESP_LOGI(TAG, "HLW_INT1");
+                break;
+
+            default:
+                break;
+            }
+        }
     }
 }
 
 void HLW_Init(void)
 {
-    xTaskCreate(HLW_Read_Task, "HLW_Read_Task", 4096, NULL, 5, NULL);
+    HLW_INT_evt_queue = xQueueCreate(10, sizeof(uint32_t));
+    HLW_muxtex = xSemaphoreCreateMutex();
+
+    gpio_config_t io_conf;
+    io_conf.intr_type = GPIO_PIN_INTR_DISABLE;
+    io_conf.mode = GPIO_MODE_OUTPUT;
+    io_conf.pin_bit_mask = ((1ULL << HLW_SCSN) | (1ULL << HLW_SCLK) | (1ULL << HLW_SDI));
+    io_conf.pull_down_en = 0;
+    io_conf.pull_up_en = 0;
+    gpio_config(&io_conf);
+
+    io_conf.intr_type = GPIO_PIN_INTR_DISABLE;
+    io_conf.mode = GPIO_MODE_INPUT;
+    io_conf.pin_bit_mask = (1ULL << HLW_SDO);
+    io_conf.pull_down_en = 1;
+    io_conf.pull_up_en = 0;
+    gpio_config(&io_conf);
+
+    //下降沿中断
+    io_conf.intr_type = GPIO_INTR_NEGEDGE;
+    io_conf.mode = GPIO_MODE_INPUT;
+    io_conf.pin_bit_mask = ((1ULL << HLW_INT1) | (1ULL << HLW_INT2));
+    io_conf.pull_down_en = 0;
+    io_conf.pull_up_en = 1;
+    gpio_config(&io_conf);
+
+    gpio_install_isr_service(ESP_INTR_FLAG_IRAM);
+    gpio_isr_handler_add(HLW_INT1, gpio_isr_handler, (void *)HLW_INT1);
+    gpio_isr_handler_add(HLW_INT2, gpio_isr_handler, (void *)HLW_INT2);
+
+    xTaskCreate(HLW_INT_Task, "HLW_INT_Task", 2048, NULL, 4, NULL);
+    xTaskCreate(HLW_Read_Task, "HLW_Read_Task", 4096, NULL, 5, &HLW_Read_Task_Hanlde);
 }

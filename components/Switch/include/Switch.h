@@ -14,7 +14,7 @@
 
 #define EN_TEST 21 //漏电检测使能
 
-#define TEST_EN_TIME 2000 * 1000   //us
+#define TEST_EN_TIME 100 * 1000    //us
 #define TRIP_EN_TIME 100 * 1000    //us
 #define MOTOR_OUT_TIME 1000 * 1000 //us
 

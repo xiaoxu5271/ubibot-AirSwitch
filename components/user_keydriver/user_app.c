@@ -47,7 +47,7 @@ static key_config_t gs_m_key_config[BOARD_BUTTON_COUNT] =
  */
 void short_pressed_cb(uint8_t key_num, uint8_t *short_pressed_counts)
 {
-    ESP_LOGI(TAG, "short_pressed_cb key_num:%d,short_pressed_counts:%d", key_num, *short_pressed_counts);
+    // ESP_LOGI(TAG, "short_pressed_cb key_num:%d,short_pressed_counts:%d", key_num, *short_pressed_counts);
     switch (key_num)
     {
     case BOARD_BUTTON:

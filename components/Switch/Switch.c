@@ -75,6 +75,7 @@ void Start_Leak_Test(void)
 
 void Switch_Relay(int8_t set_value)
 {
+    //切换
     if (set_value == -1)
     {
         if (sw_sta == 1) //分闸
@@ -93,11 +94,34 @@ void Switch_Relay(int8_t set_value)
         // memcpy(C_TYPE, "physical", 9);
     }
 
+    //合闸
     else if (set_value >= 1 && set_value <= 100)
     {
+        if (sw_sta == 1)
+        {
+            ESP_LOGI(TAG, "Switch is already ON");
+        }
+        else
+        {
+            gpio_set_level(M_IN1, 0);
+            gpio_set_level(M_IN2, 1);
+
+            esp_timer_start_once(timer_motor_handle, MOTOR_OUT_TIME);
+        }
     }
+
+    //分闸
     else if (set_value == 0)
     {
+        if (sw_sta == 0)
+        {
+            ESP_LOGI(TAG, "Switch is already OFF");
+        }
+        else
+        {
+            gpio_set_level(EN_TRIP, 1);
+            esp_timer_start_once(timer_trip_handle, TRIP_EN_TIME);
+        }
     }
 
     //D触发器 上升沿
@@ -248,7 +272,7 @@ void Switch_Init(void)
     gpio_config(&io_conf);
 
     gpio_evt_queue = xQueueCreate(10, sizeof(uint32_t));
-    xTaskCreate(HALL_Task, "gpio_task_example", 2048, NULL, 10, NULL);
+    xTaskCreate(HALL_Task, "HALL_Task", 2048, NULL, 10, NULL);
     esp_timer_create(&timer_trip_arg, &timer_trip_handle);
     esp_timer_create(&timer_motor_arg, &timer_motor_handle);
     esp_timer_create(&timer_test_arg, &timer_test_handle);

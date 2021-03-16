@@ -40,8 +40,8 @@ void app_main()
     Led_Init();
 
     Cnof_net_flag = 1;
-    while (1)
-    {
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
-    }
+    // while (1)
+    // {
+    //     vTaskDelay(1000 / portTICK_PERIOD_MS);
+    // }
 }

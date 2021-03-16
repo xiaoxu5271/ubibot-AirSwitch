@@ -2,6 +2,10 @@
 #define __HLW8110_H
 
 #include "stdio.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/event_groups.h"
+#include "freertos/semphr.h"
 
 //IO端口定义
 #define HLW_SDO 33
@@ -68,6 +72,12 @@
 #define K_A_P 1   //A通道功率
 #define K_B_I 200 //B通道电流
 #define K_A_U 1   //B通道电压
+
+//用于计算
+#define L_I_reg 752100 // 实际B通道电流寄存器值
+#define L_I 0.023      //实际施加B通道电流
+
+TaskHandle_t HLW_Read_Task_Hanlde;
 
 void HLW_Init(void);
 
