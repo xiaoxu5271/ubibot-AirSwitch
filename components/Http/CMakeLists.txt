@@ -1,5 +1,5 @@
-idf_component_register(SRCS ./Switch.c
+idf_component_register(SRCS ./Http.c
                        INCLUDE_DIRS include                       # Edit following two lines to set component requirements (see docs)
                     #    REQUIRES )
-                       PRIV_REQUIRES json ServerTimer  Http Json_parse  E2prom   Led    )
+                       PRIV_REQUIRES Json_parse E2prom Bluetooth Led Smartconfig my_base64 Http My_Mqtt )
 

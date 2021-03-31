@@ -6,17 +6,14 @@
 #include "freertos/queue.h"
 #include "esp_log.h"
 #include "driver/gpio.h"
-// #include "Cache_data.h"
-// #include "ServerTimer.h"
+#include "ServerTimer.h"
 #include "Switch.h"
-// #include "Http.h"
-// #include "Json_parse.h"
+#include "Http.h"
+#include "Json_parse.h"
 #include "Led.h"
-// #include "Bluetooth.h"
-// #include "E2prom.h"
-// #include "Smartconfig.h"
+#include "E2prom.h"
 
-// #include "Json_parse.h".
+#include "Json_parse.h".
 
 #define TAG "SWITCH"
 
@@ -123,8 +120,6 @@ void Switch_Relay(int8_t set_value)
             esp_timer_start_once(timer_trip_handle, TRIP_EN_TIME);
         }
     }
-
-    //D触发器 上升沿
 
     // if (Binary_energy != NULL)
     // {

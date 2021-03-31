@@ -2,8 +2,9 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "driver/gpio.h"
-// #include "Smartconfig.h"
-// #include "Json_parse.h"
+#include "Smartconfig.h"
+#include "Json_parse.h"
+#include "HLW8112.h"
 #include "esp_log.h"
 
 #include "Led.h"

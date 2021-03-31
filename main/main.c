@@ -16,32 +16,34 @@
 #include "Led.h"
 #include "Switch.h"
 #include "user_app.h"
+#include "Http.h"
 
 void app_main()
 {
-    printf("Hello world!\n");
+       Cache_muxtex = xSemaphoreCreateMutex();
+       xMutex_Http_Send = xSemaphoreCreateMutex(); //创建HTTP发送互斥信号
 
-    /* Print chip information */
-    esp_chip_info_t chip_info;
-    esp_chip_info(&chip_info);
-    printf("This is ESP32 chip with %d CPU cores, WiFi%s%s, ",
-           chip_info.cores,
-           (chip_info.features & CHIP_FEATURE_BT) ? "/BT" : "",
-           (chip_info.features & CHIP_FEATURE_BLE) ? "/BLE" : "");
+       /* Print chip information */
+       esp_chip_info_t chip_info;
+       esp_chip_info(&chip_info);
+       printf("This is ESP32 chip with %d CPU cores, WiFi%s%s, ",
+              chip_info.cores,
+              (chip_info.features & CHIP_FEATURE_BT) ? "/BT" : "",
+              (chip_info.features & CHIP_FEATURE_BLE) ? "/BLE" : "");
 
-    printf("silicon revision %d, ", chip_info.revision);
+       printf("silicon revision %d, ", chip_info.revision);
 
-    printf("%dMB %s flash\n", spi_flash_get_chip_size() / (1024 * 1024),
-           (chip_info.features & CHIP_FEATURE_EMB_FLASH) ? "embedded" : "external");
+       printf("%dMB %s flash\n", spi_flash_get_chip_size() / (1024 * 1024),
+              (chip_info.features & CHIP_FEATURE_EMB_FLASH) ? "embedded" : "external");
 
-    HLW_Init();
-    user_app_key_init();
-    Switch_Init();
-    Led_Init();
+       HLW_Init();
+       user_app_key_init();
+       Switch_Init();
+       Led_Init();
 
-    Cnof_net_flag = 1;
-    // while (1)
-    // {
-    //     vTaskDelay(1000 / portTICK_PERIOD_MS);
-    // }
+       Cnof_net_flag = 1;
+       // while (1)
+       // {
+       //     vTaskDelay(1000 / portTICK_PERIOD_MS);
+       // }
 }

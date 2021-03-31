@@ -67,9 +67,8 @@
 #define D_CAL_B_E 1000 / 1000 //B通道电能校正系数
 
 //免校准系数
-#define K_A_I 6   //A通道电流
+#define HK_A_I 3  //A通道电流 硬件决定的系数
 #define K_A_U 1   //A通道电压
-#define K_A_P 1   //A通道功率
 #define K_B_I 200 //B通道电流
 #define K_A_U 1   //B通道电压
 

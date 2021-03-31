@@ -1,4 +1,17 @@
 {
-        "C_Cpp.errorSquiggles": "Disabled"
-        "terminal.integrated.fontFamily": "Menlo for Powerline"
+        "C_Cpp.errorSquiggles": "Disabled",
+        "terminal.integrated.fontFamily": "Fira code",
+        "idf.portWin": "COM14",
+        "files.associations": {
+                "freertos.h": "c",
+                "smartconfig.h": "c",
+                "cjson.h": "c",
+                "esp_system.h": "c",
+                "esp_log.h": "c",
+                "e2prom.h": "c",
+                "http.h": "c",
+                "ota.h": "c",
+                "servertimer.h": "c",
+                "string.h": "c"
+        },
 }
