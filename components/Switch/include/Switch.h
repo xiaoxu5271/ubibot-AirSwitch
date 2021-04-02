@@ -22,6 +22,10 @@ EventGroupHandle_t Sw_sta_group;
 #define SW_STA_BIT (1 << 0) //闸门状态
 #define M_STA_BIT (1 << 1)  //电机复位状态
 
+extern bool sw_sta; //1 合闸
+extern bool f_sta;  //0 复位
+extern bool m_sta;  //0 复位
+
 void Switch_Init(void);
 void Switch_Relay(int8_t set_value);
 void Start_Leak_Test(void);

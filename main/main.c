@@ -7,43 +7,71 @@
    CONDITIONS OF ANY KIND, either express or implied.
 */
 #include <stdio.h>
+#include <string.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_system.h"
 #include "esp_spi_flash.h"
+#include "esp_log.h"
 
+#include "Http.h"
+#include "Smartconfig.h"
+#include "Uart0.h"
 #include "HLW8112.h"
 #include "Led.h"
+#include "E2prom.h"
 #include "Switch.h"
+#include "ota.h"
 #include "user_app.h"
-#include "Http.h"
+#include "Json_parse.h"
+#include "user_key.h"
+#include "My_Mqtt.h"
 
 void app_main()
 {
-       Cache_muxtex = xSemaphoreCreateMutex();
-       xMutex_Http_Send = xSemaphoreCreateMutex(); //创建HTTP发送互斥信号
+	if (Check_First_Key())
+	{
+		ota_back();
+	}
 
-       /* Print chip information */
-       esp_chip_info_t chip_info;
-       esp_chip_info(&chip_info);
-       printf("This is ESP32 chip with %d CPU cores, WiFi%s%s, ",
-              chip_info.cores,
-              (chip_info.features & CHIP_FEATURE_BT) ? "/BT" : "",
-              (chip_info.features & CHIP_FEATURE_BLE) ? "/BLE" : "");
+	Cache_muxtex = xSemaphoreCreateMutex();
+	xMutex_Http_Send = xSemaphoreCreateMutex(); //创建HTTP发送互斥信号
+	Net_sta_group = xEventGroupCreate();
 
-       printf("silicon revision %d, ", chip_info.revision);
+	/* Print chip information */
+	esp_chip_info_t chip_info;
+	esp_chip_info(&chip_info);
+	printf("This is ESP32 chip with %d CPU cores, WiFi%s%s, ",
+		   chip_info.cores,
+		   (chip_info.features & CHIP_FEATURE_BT) ? "/BT" : "",
+		   (chip_info.features & CHIP_FEATURE_BLE) ? "/BLE" : "");
 
-       printf("%dMB %s flash\n", spi_flash_get_chip_size() / (1024 * 1024),
-              (chip_info.features & CHIP_FEATURE_EMB_FLASH) ? "embedded" : "external");
+	printf("silicon revision %d, ", chip_info.revision);
 
-       HLW_Init();
-       user_app_key_init();
-       Switch_Init();
-       Led_Init();
+	printf("%dMB %s flash\n", spi_flash_get_chip_size() / (1024 * 1024),
+		   (chip_info.features & CHIP_FEATURE_EMB_FLASH) ? "embedded" : "external");
 
-       Cnof_net_flag = 1;
-       // while (1)
-       // {
-       //     vTaskDelay(1000 / portTICK_PERIOD_MS);
-       // }
+	Led_Init();
+	Switch_Init();
+	E2prom_Init();
+	Read_Metadate_E2p();
+	Read_Product_E2p();
+	Read_Fields_E2p();
+	Uart_Init();
+	user_app_key_init();
+	HLW_Init();
+
+	initialise_http(); //须放在 采集任务建立之后
+	initialise_mqtt();
+
+	/* 判断是否有序列号和product id */
+	if ((strlen(SerialNum) == 0) || (strlen(ProductId) == 0) || (strlen(WEB_SERVER) == 0)) //未获取到序列号或productid，未烧写序列号
+	{
+		while (1)
+		{
+			ESP_LOGE("Init", "no SerialNum or product id!");
+			No_ser_flag = true;
+			vTaskDelay(1000 / portTICK_RATE_MS);
+		}
+	}
 }

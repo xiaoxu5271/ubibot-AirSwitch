@@ -7,13 +7,13 @@
 #include "esp_log.h"
 #include "driver/gpio.h"
 #include "ServerTimer.h"
-#include "Switch.h"
 #include "Http.h"
 #include "Json_parse.h"
 #include "Led.h"
 #include "E2prom.h"
+#include "Smartconfig.h"
 
-#include "Json_parse.h".
+#include "Switch.h"
 
 #define TAG "SWITCH"
 
@@ -121,81 +121,87 @@ void Switch_Relay(int8_t set_value)
         }
     }
 
-    // if (Binary_energy != NULL)
-    // {
-    //     xTaskNotifyGive(Binary_energy);
-    // }
-    // if (Binary_dp != NULL)
-    // {
-    //     xTaskNotifyGive(Binary_dp);
-    // }
-    // if (de_sw_s == 2)
-    // {
-    // E2P_WriteOneByte(LAST_SWITCH_ADD, mqtt_json_s.mqtt_switch_status); //写入开关状态
-    // }
+    if (de_sw_s == 2)
+    {
+        E2P_WriteOneByte(LAST_SWITCH_ADD, sw_sta); //写入开关状态
+    }
 
-    // if (mqtt_json_s.mqtt_switch_status == 1)
-    // {
-    //     SW_last_time = (uint64_t)esp_timer_get_time();
-    // }
-    // else
-    // {
-    //     //累加单次开启时长
-    //     SW_on_time += (uint64_t)esp_timer_get_time() - SW_last_time;
-    // }
+    if (sw_sta == 1)
+    {
+        SW_last_time = (uint64_t)esp_timer_get_time();
+    }
+    else
+    {
+        //累加单次开启时长
+        SW_on_time += (uint64_t)esp_timer_get_time() - SW_last_time;
+    }
 }
 
 //读取，构建累积开启时长
-// void Sw_on_quan_Task(void *pvParameters)
-// {
-//     char *filed_buff;
-//     char *OutBuffer;
-//     char *time_buff;
-//     // uint8_t *SaveBuffer;
-//     uint16_t len = 0;
-//     cJSON *pJsonRoot;
+void Sw_on_quan_Task(void *pvParameters)
+{
+    char *filed_buff;
+    char *OutBuffer;
+    char *time_buff;
+    // uint8_t *SaveBuffer;
+    uint16_t len = 0;
+    cJSON *pJsonRoot;
 
-//     while (1)
-//     {
-//         ulTaskNotifyTake(pdTRUE, -1);
+    while (1)
+    {
+        ulTaskNotifyTake(pdTRUE, -1);
 
-//         //仍处于开启状态
-//         if (mqtt_json_s.mqtt_switch_status == 1)
-//         {
-//             SW_on_time += (uint64_t)esp_timer_get_time() - SW_last_time;
-//             SW_last_time = (uint64_t)esp_timer_get_time();
-//         }
-//         ESP_LOGI(TAG, "SW_on_time:%lld", SW_on_time);
+        //仍处于开启状态
+        if (sw_sta == 1)
+        {
+            SW_on_time += (uint64_t)esp_timer_get_time() - SW_last_time;
+            SW_last_time = (uint64_t)esp_timer_get_time();
+        }
+        ESP_LOGI(TAG, "SW_on_time:%lld", SW_on_time);
 
-//         if ((xEventGroupGetBits(Net_sta_group) & TIME_CAL_BIT) == TIME_CAL_BIT)
-//         {
-//             filed_buff = (char *)malloc(9);
-//             time_buff = (char *)malloc(24);
-//             Server_Timer_SEND(time_buff);
-//             pJsonRoot = cJSON_CreateObject();
-//             cJSON_AddStringToObject(pJsonRoot, "created_at", (const char *)time_buff);
-//             snprintf(filed_buff, 9, "field%d", sw_on_f_num);
-//             cJSON_AddItemToObject(pJsonRoot, filed_buff, cJSON_CreateNumber((uint64_t)((SW_on_time + 500000) / 1000000))); //四舍五入
+        if ((xEventGroupGetBits(Net_sta_group) & TIME_CAL_BIT) == TIME_CAL_BIT)
+        {
+            filed_buff = (char *)malloc(9);
+            time_buff = (char *)malloc(24);
+            Server_Timer_SEND(time_buff);
+            pJsonRoot = cJSON_CreateObject();
+            cJSON_AddStringToObject(pJsonRoot, "created_at", (const char *)time_buff);
+            snprintf(filed_buff, 9, "field%d", f_sw_on);
+            cJSON_AddItemToObject(pJsonRoot, filed_buff, cJSON_CreateNumber((uint64_t)((SW_on_time + 500000) / 1000000))); //四舍五入
 
-//             OutBuffer = cJSON_PrintUnformatted(pJsonRoot); //cJSON_Print(Root)
-//             if (OutBuffer != NULL)
-//             {
-//                 len = strlen(OutBuffer);
-//                 ESP_LOGI(TAG, "len:%d\n%s\n", len, OutBuffer);
-//                 xSemaphoreTake(Cache_muxtex, -1);
-//                 DataSave((uint8_t *)OutBuffer, len);
-//                 xSemaphoreGive(Cache_muxtex);
-//                 cJSON_free(OutBuffer);
-//             }
-//             cJSON_Delete(pJsonRoot); //delete cjson root
+            OutBuffer = cJSON_PrintUnformatted(pJsonRoot); //cJSON_Print(Root)
+            if (OutBuffer != NULL)
+            {
+                len = strlen(OutBuffer);
+                ESP_LOGI(TAG, "len:%d\n%s\n", len, OutBuffer);
+                if (len + Databuffer_len > MAX_DATA_BUFFRE_LEN)
+                {
+                    ESP_LOGE(TAG, "Databuffer_len is over");
+                }
+                else
+                {
+                    if (xSemaphoreTake(Cache_muxtex, 10 / portTICK_RATE_MS) == pdTRUE)
+                    {
+                        memcpy(Databuffer + Databuffer_len, OutBuffer, len);
+                        Databuffer_len += len;
+                        xSemaphoreGive(Cache_muxtex);
+                    }
+                    else
+                    {
+                        ESP_LOGE(TAG, "%d,Cache_muxtex", __LINE__);
+                    }
+                }
+            }
+            cJSON_Delete(pJsonRoot); //delete cjson root
 
-//             free(filed_buff);
-//             free(time_buff);
-//             //清空统计
-//             SW_on_time = 0;
-//         }
-//     }
-// }
+            free(filed_buff);
+            free(time_buff);
+            //清空统计
+            SW_on_time = 0;
+        }
+    }
+}
+
 static void IRAM_ATTR gpio_isr_handler(void *arg)
 {
     uint32_t gpio_num = (uint32_t)arg;
@@ -228,6 +234,8 @@ void HALL_Task(void *arg)
 
             case HALL_S:
                 sw_sta = gpio_get_level(HALL_S);
+                Create_Switch_Json();
+
                 break;
 
             case HALL_F:

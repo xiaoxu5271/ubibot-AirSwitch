@@ -388,6 +388,72 @@ void send_heart_task(void *arg)
     }
 }
 
+#define STATUS_BUFF_LEN 1024
+static Net_Err Http_post_fun(void)
+{
+    xEventGroupWaitBits(Net_sta_group, ACTIVED_BIT, false, true, -1);
+
+    xSemaphoreTake(xMutex_Http_Send, -1);
+    uint32_t post_data_len; //Content_Length，通过http发送的总数据大小
+    uint32_t Databuffer_len_tmp;
+    int32_t socket_num; //http socket
+    Net_Err ret;
+
+    const char *post_header = "{\"feeds\":["; //
+    char *status_buff = (char *)malloc(STATUS_BUFF_LEN);
+    memset(status_buff, 0, STATUS_BUFF_LEN);
+
+    Databuffer_len_tmp = Databuffer_len;
+    char *Postdata_buff = (char *)malloc(Databuffer_len_tmp);
+    memcpy(Postdata_buff, Databuffer, Databuffer_len_tmp);
+    Create_Status_Json(status_buff, STATUS_BUFF_LEN, true); //
+    post_data_len = Databuffer_len_tmp + strlen(post_header) + strlen(status_buff);
+
+    socket_num = http_post_init(post_data_len);
+    if (socket_num < 0)
+    {
+        ret = NET_DIS;
+        ESP_LOGE(TAG, "ERR LINE%d", __LINE__);
+        goto end;
+    }
+    // ESP_LOGI(TAG, "ERR LINE%d", __LINE__);
+
+    // if (write(socket_num, post_header, strlen((const char *)post_header)) < 0) //step4：发送http Header
+    if (http_send_post(socket_num, (char *)post_header, false) != 1)
+    {
+        ret = NET_DIS;
+        ESP_LOGE(TAG, "ERR LINE%d", __LINE__);
+        goto end;
+    }
+
+    if (http_send_post(socket_num, (char *)Postdata_buff, false) != 1)
+    {
+        ret = NET_DIS;
+        ESP_LOGE(TAG, "ERR LINE%d", __LINE__);
+        goto end;
+    }
+
+    if (http_send_post(socket_num, status_buff, true) != 1)
+    {
+        //这里出错很有可能是数据构建出问题，
+        // data_err_flag = true;
+        ret = NET_DIS;
+        ESP_LOGE(TAG, "ERR LINE%d", __LINE__);
+        goto end;
+    }
+
+end:
+    free(status_buff);
+    free(Postdata_buff);
+    memset(Databuffer, 0, Databuffer_len);
+    if (ret == NET_OK)
+    {
+        memset(Databuffer, 0, Databuffer_len);
+        Databuffer_len = 0;
+    }
+    return ret;
+}
+
 //数据同步任务
 void send_data_task(void *arg)
 {
@@ -395,18 +461,15 @@ void send_data_task(void *arg)
     while (1)
     {
         ulTaskNotifyTake(pdTRUE, -1);
-        ESP_LOGW("heart_memroy check", " INTERNAL RAM left %dKB，free Heap:%d",
-                 heap_caps_get_free_size(MALLOC_CAP_INTERNAL) / 1024,
-                 esp_get_free_heap_size());
-
-        while ((ret = Send_herat()) != NET_OK)
+        Create_NET_Json();
+        while ((ret = Http_post_fun()) != NET_OK)
         {
-            if (ret != NET_DIS) //非网络错误，需重新激活
+            if (ret != NET_DIS)
             {
                 Start_Active();
                 break;
             }
-            vTaskDelay(10000 / portTICK_PERIOD_MS);
+            vTaskDelay(500 / portTICK_PERIOD_MS);
         }
     }
 }

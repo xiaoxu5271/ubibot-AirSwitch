@@ -12,6 +12,7 @@
                 "http.h": "c",
                 "ota.h": "c",
                 "servertimer.h": "c",
-                "string.h": "c"
+                "string.h": "c",
+                "user_app.h": "c"
         },
 }

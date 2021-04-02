@@ -690,7 +690,7 @@ uint16_t Create_Status_Json(char *status_buff, uint16_t buff_len, bool filed_fla
         memset(field_buff, 0, FILED_BUFF_SIZE);
         memset(cali_buff, 0, CALI_BUFF_SIZE);
         Create_fields_num(field_buff);
-        Create_cali_buf(cali_buff);
+        // Create_cali_buf(cali_buff);
 
         ssid64_buff = (char *)malloc(64);
         memset(ssid64_buff, 0, 64);
@@ -758,7 +758,7 @@ void Create_NET_Json(void)
             snprintf(filed_buff, 9, "field%d", f_rssi_w);
             cJSON_AddItemToObject(pJsonRoot, filed_buff, cJSON_CreateNumber(wifidata_t.rssi));
         }
-        cJSON_AddItemToObject(pJsonRoot, "field1", cJSON_CreateNumber(mqtt_json_s.mqtt_switch_status));
+        cJSON_AddItemToObject(pJsonRoot, "field1", cJSON_CreateNumber(sw_sta));
         snprintf(status_buf, 50, "c_type=%s", C_TYPE);
         cJSON_AddItemToObject(pJsonRoot, "status", cJSON_CreateString(status_buf));
 
@@ -773,10 +773,16 @@ void Create_NET_Json(void)
             }
             else
             {
-                xSemaphoreTake(Cache_muxtex, -1);
-                memcpy(Databuffer + Databuffer_len, OutBuffer, len);
-                Databuffer_len += len;
-                xSemaphoreGive(Cache_muxtex);
+                if (xSemaphoreTake(Cache_muxtex, 10 / portTICK_RATE_MS) == pdTRUE)
+                {
+                    memcpy(Databuffer + Databuffer_len, OutBuffer, len);
+                    Databuffer_len += len;
+                    xSemaphoreGive(Cache_muxtex);
+                }
+                else
+                {
+                    ESP_LOGE(TAG, "%d,Cache_muxtex", __LINE__);
+                }
             }
 
             cJSON_free(OutBuffer);
@@ -803,7 +809,7 @@ void Create_Switch_Json(void)
         pJsonRoot = cJSON_CreateObject();
         cJSON_AddStringToObject(pJsonRoot, "created_at", (const char *)time_buff);
 
-        cJSON_AddItemToObject(pJsonRoot, "field1", cJSON_CreateNumber(mqtt_json_s.mqtt_switch_status));
+        cJSON_AddItemToObject(pJsonRoot, "field1", cJSON_CreateNumber(sw_sta));
         snprintf(status_buf, 50, "c_type=%s", C_TYPE);
         cJSON_AddItemToObject(pJsonRoot, "status", cJSON_CreateString(status_buf));
 
@@ -818,10 +824,16 @@ void Create_Switch_Json(void)
             }
             else
             {
-                xSemaphoreTake(Cache_muxtex, -1);
-                memcpy(Databuffer + Databuffer_len, OutBuffer, len);
-                Databuffer_len += len;
-                xSemaphoreGive(Cache_muxtex);
+                if (xSemaphoreTake(Cache_muxtex, 10 / portTICK_RATE_MS) == pdTRUE)
+                {
+                    memcpy(Databuffer + Databuffer_len, OutBuffer, len);
+                    Databuffer_len += len;
+                    xSemaphoreGive(Cache_muxtex);
+                }
+                else
+                {
+                    ESP_LOGE(TAG, "%d,Cache_muxtex", __LINE__);
+                }
             }
             cJSON_free(OutBuffer);
         }
