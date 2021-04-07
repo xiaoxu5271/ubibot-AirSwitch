@@ -85,7 +85,7 @@ void timer_heart_cb(void *arg)
     if (fn_sw_e)
         if (min_num % fn_sw_e == 0)
         {
-            vTaskNotifyGiveFromISR(Binary_energy, NULL);
+            // vTaskNotifyGiveFromISR(Binary_energy, NULL);
         }
 }
 
@@ -388,26 +388,60 @@ void send_heart_task(void *arg)
     }
 }
 
+//缓存数据
+void DataSave(uint8_t *sava_buff, uint16_t Buff_len)
+{
+    // xSemaphoreTake(Cache_muxtex, -1);
+    Mqtt_Msg Mqtt_Data = {.buff = {0},
+                          .buff_len = 0};
+
+    uint16_t Buff_len_c;
+    // ESP_LOGI(TAG, "len:%d\n%s\n", Buff_len, sava_buff);
+    Buff_len_c = strlen((const char *)sava_buff);
+    if (Buff_len == 0 || Buff_len != Buff_len_c)
+    {
+        ESP_LOGE(TAG, "save err Buff_len:%d,Buff_len_c:%d", Buff_len, Buff_len_c);
+        return;
+    }
+
+    memcpy(Mqtt_Data.buff, sava_buff, Buff_len);
+    Mqtt_Data.buff_len = Buff_len;
+    xQueueOverwrite(Send_Mqtt_Queue, (void *)&Mqtt_Data);
+
+    if (Buff_len + Databuffer_len + 1 > MAX_DATA_BUFFRE_LEN)
+    {
+        ESP_LOGE(TAG, "Databuffer_len is over");
+        return;
+    }
+    else
+    {
+        memcpy(Databuffer + Databuffer_len, sava_buff, Buff_len);
+        Databuffer_len = Databuffer_len + Buff_len + 1;
+        Databuffer[Databuffer_len - 1] = ',';
+        ESP_LOGI(TAG, "Databuffer_len:%d", Databuffer_len);
+    }
+}
+
 #define STATUS_BUFF_LEN 1024
 static Net_Err Http_post_fun(void)
 {
     xEventGroupWaitBits(Net_sta_group, ACTIVED_BIT, false, true, -1);
 
     xSemaphoreTake(xMutex_Http_Send, -1);
+    xSemaphoreTake(Cache_muxtex, -1);
+
     uint32_t post_data_len; //Content_Length，通过http发送的总数据大小
-    uint32_t Databuffer_len_tmp;
-    int32_t socket_num; //http socket
+    int32_t socket_num;     //http socket
     Net_Err ret;
 
     const char *post_header = "{\"feeds\":["; //
     char *status_buff = (char *)malloc(STATUS_BUFF_LEN);
     memset(status_buff, 0, STATUS_BUFF_LEN);
 
-    Databuffer_len_tmp = Databuffer_len;
-    char *Postdata_buff = (char *)malloc(Databuffer_len_tmp);
-    memcpy(Postdata_buff, Databuffer, Databuffer_len_tmp);
+    char *recv_buff = (char *)malloc(HTTP_RECV_BUFF_LEN);
+    memset(recv_buff, 0, HTTP_RECV_BUFF_LEN);
     Create_Status_Json(status_buff, STATUS_BUFF_LEN, true); //
-    post_data_len = Databuffer_len_tmp + strlen(post_header) + strlen(status_buff);
+    post_data_len = Databuffer_len - 1 + strlen(post_header) + strlen(status_buff);
 
     socket_num = http_post_init(post_data_len);
     if (socket_num < 0)
@@ -416,9 +450,8 @@ static Net_Err Http_post_fun(void)
         ESP_LOGE(TAG, "ERR LINE%d", __LINE__);
         goto end;
     }
-    // ESP_LOGI(TAG, "ERR LINE%d", __LINE__);
 
-    // if (write(socket_num, post_header, strlen((const char *)post_header)) < 0) //step4：发送http Header
+    // ESP_LOGI(TAG, "post_header:%s", post_header);
     if (http_send_post(socket_num, (char *)post_header, false) != 1)
     {
         ret = NET_DIS;
@@ -426,13 +459,16 @@ static Net_Err Http_post_fun(void)
         goto end;
     }
 
-    if (http_send_post(socket_num, (char *)Postdata_buff, false) != 1)
+    Databuffer[Databuffer_len - 1] = 0;
+    // ESP_LOGI(TAG, "Postdata_buff:%s", Databuffer);
+    if (http_send_post(socket_num, (char *)Databuffer, false) != 1)
     {
         ret = NET_DIS;
         ESP_LOGE(TAG, "ERR LINE%d", __LINE__);
         goto end;
     }
 
+    ESP_LOGI(TAG, "status_buff:%s", status_buff);
     if (http_send_post(socket_num, status_buff, true) != 1)
     {
         //这里出错很有可能是数据构建出问题，
@@ -442,9 +478,34 @@ static Net_Err Http_post_fun(void)
         goto end;
     }
 
+    memset(recv_buff, 0, HTTP_RECV_BUFF_LEN);
+    if (http_post_read(socket_num, recv_buff, HTTP_RECV_BUFF_LEN) == false)
+    {
+        ESP_LOGE(TAG, "ERR LINE%d", __LINE__);
+        ret = NET_DIS;
+        Net_sta_flag = false;
+        goto end;
+    }
+    ESP_LOGI(TAG, "ERR LINE%d", __LINE__);
+    // printf("解析返回数据！\n");
+    ESP_LOGI(TAG, "mes recv %d,\n:%s", strlen(recv_buff), recv_buff);
+    if (parse_objects_http_respond(recv_buff))
+    {
+        ret = NET_OK;
+        Net_sta_flag = true;
+        ESP_LOGI(TAG, "post success");
+    }
+    else
+    {
+        ret = NET_400;
+        Net_sta_flag = false;
+        goto end;
+    }
+
 end:
+    xSemaphoreGive(Cache_muxtex);
+    xSemaphoreGive(xMutex_Http_Send);
     free(status_buff);
-    free(Postdata_buff);
     memset(Databuffer, 0, Databuffer_len);
     if (ret == NET_OK)
     {

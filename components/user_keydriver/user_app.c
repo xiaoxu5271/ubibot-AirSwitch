@@ -15,7 +15,7 @@
 // #include "Mqtt.h"
 // #include "w5500_driver.h"
 // #include "ota.h"
-// #include "Bluetooth.h"
+#include "Bluetooth.h"
 // #include "E2prom.h"
 // #include "Json_parse.h"
 #include "Switch.h"
@@ -130,7 +130,7 @@ void long_pressed_cb(uint8_t key_num, uint8_t *long_pressed_counts)
     {
     case BOARD_BUTTON:
         ESP_LOGI("long_pressed_cb", "long press!!!\n");
-        // ble_app_start();
+        ble_app_start();
         break;
     default:
         break;

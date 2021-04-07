@@ -23,6 +23,8 @@ bool sw_sta = false; //1 合闸
 bool f_sta = false;  //0 复位
 bool m_sta = false;  //0 复位
 
+bool c_type_flag = false; //c_type 设置flag
+
 void timer_trip_cb(void *arg);
 esp_timer_handle_t timer_trip_handle = NULL; //定时器句柄
 esp_timer_create_args_t timer_trip_arg = {
@@ -47,6 +49,7 @@ esp_timer_create_args_t timer_test_arg = {
 void timer_motor_cb(void *arg)
 {
     //电机运转超时（电机损坏）
+    MECH_FLAG = false;
     gpio_set_level(M_IN1, 1);
     gpio_set_level(M_IN2, 1);
     ESP_LOGE(TAG, "MOTOR ERROR");
@@ -87,8 +90,6 @@ void Switch_Relay(int8_t set_value)
 
             esp_timer_start_once(timer_motor_handle, MOTOR_OUT_TIME);
         }
-
-        // memcpy(C_TYPE, "physical", 9);
     }
 
     //合闸
@@ -174,23 +175,16 @@ void Sw_on_quan_Task(void *pvParameters)
             {
                 len = strlen(OutBuffer);
                 ESP_LOGI(TAG, "len:%d\n%s\n", len, OutBuffer);
-                if (len + Databuffer_len > MAX_DATA_BUFFRE_LEN)
+                if (xSemaphoreTake(Cache_muxtex, 10 / portTICK_RATE_MS) == pdTRUE)
                 {
-                    ESP_LOGE(TAG, "Databuffer_len is over");
+                    DataSave((uint8_t *)OutBuffer, len);
+                    xSemaphoreGive(Cache_muxtex);
                 }
                 else
                 {
-                    if (xSemaphoreTake(Cache_muxtex, 10 / portTICK_RATE_MS) == pdTRUE)
-                    {
-                        memcpy(Databuffer + Databuffer_len, OutBuffer, len);
-                        Databuffer_len += len;
-                        xSemaphoreGive(Cache_muxtex);
-                    }
-                    else
-                    {
-                        ESP_LOGE(TAG, "%d,Cache_muxtex", __LINE__);
-                    }
+                    ESP_LOGE(TAG, "%d,Cache_muxtex", __LINE__);
                 }
+                cJSON_free(OutBuffer);
             }
             cJSON_Delete(pJsonRoot); //delete cjson root
 
@@ -224,6 +218,7 @@ void HALL_Task(void *arg)
                 //齿轮复位
                 if (m_sta == 0)
                 {
+                    MECH_FLAG = true;
                     esp_timer_stop(timer_motor_handle);
                     gpio_set_level(M_IN1, 1);
                     gpio_set_level(M_IN2, 1);
@@ -234,8 +229,24 @@ void HALL_Task(void *arg)
 
             case HALL_S:
                 sw_sta = gpio_get_level(HALL_S);
-                Create_Switch_Json();
+                //齿轮复位状态，代表外部手动操作合闸
+                if (c_type_flag == false)
+                {
+                    // if (m_sta == 0 && sw_sta == 1)
+                    // {
+                    //     memset(C_TYPE, 0, sizeof(C_TYPE));
+                    //     memcpy(C_TYPE, "physical_p", 11);
+                    // }
 
+                    memset(C_TYPE, 0, sizeof(C_TYPE));
+                    memcpy(C_TYPE, "physical_p", 11);
+                }
+                else
+                {
+                    c_type_flag = false;
+                }
+
+                Create_Switch_Json();
                 break;
 
             case HALL_F:
@@ -275,7 +286,7 @@ void Switch_Init(void)
     gpio_config(&io_conf);
 
     gpio_evt_queue = xQueueCreate(10, sizeof(uint32_t));
-    xTaskCreate(HALL_Task, "HALL_Task", 2048, NULL, 10, NULL);
+    xTaskCreate(HALL_Task, "HALL_Task", 4096, NULL, 10, NULL);
     esp_timer_create(&timer_trip_arg, &timer_trip_handle);
     esp_timer_create(&timer_motor_arg, &timer_motor_handle);
     esp_timer_create(&timer_test_arg, &timer_test_handle);
@@ -288,4 +299,17 @@ void Switch_Init(void)
     f_sta = gpio_get_level(HALL_F);
     m_sta = gpio_get_level(HALL_M);
     ESP_LOGI(TAG, "sw_sta:%d,f_sta:%d,m_sta:%d", sw_sta, f_sta, m_sta);
+
+    //c齿轮未复位
+    if (m_sta == 1)
+    {
+        MECH_FLAG = false;
+        gpio_set_level(M_IN1, 1);
+        gpio_set_level(M_IN2, 0);
+        esp_timer_start_once(timer_motor_handle, MOTOR_OUT_TIME);
+    }
+    else
+    {
+        MECH_FLAG = true;
+    }
 }

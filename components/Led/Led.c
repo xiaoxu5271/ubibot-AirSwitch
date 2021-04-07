@@ -13,8 +13,8 @@
 
 #if 1
 
-#define GPIO_LED_B GPIO_NUM_12
-#define GPIO_LED_Y GPIO_NUM_2
+#define GPIO_LED_R GPIO_NUM_12
+#define GPIO_LED_B GPIO_NUM_2
 
 #else
 
@@ -27,9 +27,9 @@
 TaskHandle_t Led_Task_Handle = NULL;
 uint8_t Last_Led_Status;
 
-bool CSE_FLAG = false;
+bool HLW_FLAG = false;
 bool E2P_FLAG = false;
-bool FLASH_FLAG = false;
+bool MECH_FLAG = false; //机械结构
 
 bool Set_defaul_flag = false;
 bool Net_sta_flag = false;
@@ -37,13 +37,12 @@ bool Cnof_net_flag = false;
 bool No_ser_flag = false;
 
 /*******************************************
-黄灯闪烁：硬件错误
-蓝灯闪烁：恢复出厂
-黄蓝交替闪烁：配置网络
+硬件错误	红灯闪烁	1
+恢复出厂设置	蓝灯闪烁	2
+配置网络	红蓝交替闪烁	3
+网络正常	蓝灯	4
+网络异常	红灯	4
 
-蓝灯常亮：开关开启，网络正常
-黄灯常亮：电源开启，网络断开
-灯熄灭：电源断开 
  
 *******************************************/
 static void Led_Task(void *arg)
@@ -51,16 +50,16 @@ static void Led_Task(void *arg)
     while (1)
     {
         //硬件错误
-        // if ((CSE_FLAG == false) || (E2P_FLAG == false) || (FLASH_FLAG == false))
-        // {
-        //     // ESP_LOGI(TAG, "CSE_FLAG=:%d,E2P_FLAG=:%d,FLASH_FLAG=:%d", CSE_FLAG, E2P_FLAG, FLASH_FLAG);
-        //     Led_Off();
-        //     vTaskDelay(500 / portTICK_RATE_MS);
-        //     Led_Y_On();
-        //     vTaskDelay(500 / portTICK_RATE_MS);
-        // }
+        if ((MECH_FLAG == false) || (E2P_FLAG == false) || (HLW_FLAG == false))
+        {
+            ESP_LOGI(TAG, "MECH_FLAG=:%d,E2P_FLAG=:%d,HLW_FLAG=:%d", MECH_FLAG, E2P_FLAG, HLW_FLAG);
+            Led_Off();
+            vTaskDelay(500 / portTICK_RATE_MS);
+            Led_R_On();
+            vTaskDelay(500 / portTICK_RATE_MS);
+        }
         //恢复出厂
-        if (Set_defaul_flag == true)
+        else if (Set_defaul_flag == true)
         {
             Led_Off();
             vTaskDelay(500 / portTICK_RATE_MS);
@@ -68,24 +67,31 @@ static void Led_Task(void *arg)
             vTaskDelay(500 / portTICK_RATE_MS);
         }
         //配网
-        else if (Cnof_net_flag == 1)
+        else if (Cnof_net_flag == true)
         {
             Led_Off();
             Led_B_On();
             vTaskDelay(500 / portTICK_RATE_MS);
             Led_Off();
-            Led_Y_On();
+            Led_R_On();
             vTaskDelay(500 / portTICK_RATE_MS);
         }
         //开关以及网络
         else
         {
-            Led_Off();
-            Led_B_On();
-            vTaskDelay(500 / portTICK_RATE_MS);
-            Led_Off();
-            Led_Y_On();
-            vTaskDelay(500 / portTICK_RATE_MS);
+            // ESP_LOGI(TAG, "Net_sta_flag:%d", Net_sta_flag);
+            if (Net_sta_flag == true)
+            {
+                Led_Off();
+                Led_B_On();
+                vTaskDelay(500 / portTICK_RATE_MS);
+            }
+            else
+            {
+                Led_Off();
+                Led_R_On();
+                vTaskDelay(500 / portTICK_RATE_MS);
+            }
         }
     }
 }
@@ -99,7 +105,7 @@ void Led_Init(void)
     //set as output mode
     io_conf.mode = GPIO_MODE_OUTPUT;
     //bit mask of the pins that you want to set,e.g.GPIO16
-    io_conf.pin_bit_mask = (1ULL << GPIO_LED_B) | (1ULL << GPIO_LED_Y);
+    io_conf.pin_bit_mask = (1ULL << GPIO_LED_B) | (1ULL << GPIO_LED_R);
     //disable pull-down mode
     io_conf.pull_down_en = 1;
     //disable pull-up mode
@@ -112,22 +118,15 @@ void Led_Init(void)
 
 void Led_R_On(void)
 {
-    // gpio_set_level(GPIO_LED_R, 0);
-    // gpio_set_level(GPIO_LED_G, 1);
-    // gpio_set_level(GPIO_LED_B, 1);
+    gpio_set_level(GPIO_LED_R, 1);
 }
-
-void Led_G_On(void)
+void Led_R_Off(void)
 {
-    // gpio_set_level(GPIO_LED_R, 1);
-    // gpio_set_level(GPIO_LED_G, 0);
-    // gpio_set_level(GPIO_LED_B, 1);
+    gpio_set_level(GPIO_LED_R, 0);
 }
 
 void Led_B_On(void)
 {
-    // gpio_set_level(GPIO_LED_R, 1);
-    // gpio_set_level(GPIO_LED_G, 1);
     gpio_set_level(GPIO_LED_B, 1);
 }
 
@@ -136,26 +135,10 @@ void Led_B_Off(void)
     gpio_set_level(GPIO_LED_B, 0);
 }
 
-void Led_Y_On(void)
-{
-    gpio_set_level(GPIO_LED_Y, 1);
-}
-void Led_Y_Off(void)
-{
-    gpio_set_level(GPIO_LED_Y, 0);
-}
-
-void Led_C_On(void) //
-{
-    // gpio_set_level(GPIO_LED_R, 1);
-    // gpio_set_level(GPIO_LED_G, 0);
-    // gpio_set_level(GPIO_LED_B, 0);
-}
-
 void Led_Off(void)
 {
     Led_B_Off();
-    Led_Y_Off();
+    Led_R_Off();
 }
 
 void Turn_Off_LED(void)

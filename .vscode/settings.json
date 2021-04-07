@@ -13,6 +13,10 @@
                 "ota.h": "c",
                 "servertimer.h": "c",
                 "string.h": "c",
-                "user_app.h": "c"
+                "user_app.h": "c",
+                "switch.h": "c",
+                "led.h": "c",
+                "json_parse.h": "c"
         },
+        "idf.flashType": "UART",
 }

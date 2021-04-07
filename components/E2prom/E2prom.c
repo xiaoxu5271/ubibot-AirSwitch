@@ -247,6 +247,7 @@ uint8_t E2P_ReadOneByte(uint16_t reg_addr)
         else
         {
             ret = false;
+            ESP_LOGE(TAG, "temp_buf:%d,%d", temp_buf[0], temp_buf[1]);
             ESP_LOGE(TAG, "E2P_ReadOneByte err");
         }
     }
@@ -332,6 +333,7 @@ uint32_t E2P_ReadLenByte(uint16_t ReadAddr, uint8_t Len)
     uint8_t t;
     uint32_t temp = 0;
     uint8_t *data_temp;
+    bool ret = true;
     data_temp = (uint8_t *)malloc(Len + 1);
 
     for (uint8_t i = 0; i < 10; i++)
@@ -351,13 +353,23 @@ uint32_t E2P_ReadLenByte(uint16_t ReadAddr, uint8_t Len)
             {
                 temp += (data_temp[t] << (8 * t));
             }
+            ret = true;
             break;
         }
         else
         {
+            ret = false;
             esp_log_buffer_hex(TAG, data_temp, Len + 1);
             ESP_LOGE(TAG, "E2P_ReadLenByte err!!!");
         }
+    }
+
+    if (ret == false)
+    {
+        ESP_LOGE(TAG, "%d", __LINE__);
+        E2prom_empty_all(false);
+        ESP_LOGI(TAG, "%d", __LINE__);
+        esp_restart();
     }
 
     free(data_temp);
@@ -371,6 +383,7 @@ uint32_t E2P_ReadLenByte(uint16_t ReadAddr, uint8_t Len)
 void E2P_Read(uint16_t ReadAddr, uint8_t *pBuffer, uint16_t NumToRead)
 {
     uint8_t *check_buff;
+    bool ret;
     check_buff = (uint8_t *)malloc(NumToRead + 1);
 
     for (uint8_t i = 0; i < 10; i++)
@@ -387,13 +400,23 @@ void E2P_Read(uint16_t ReadAddr, uint8_t *pBuffer, uint16_t NumToRead)
         if (check_buff[NumToRead] == Get_Crc8(check_buff, NumToRead))
         {
             memcpy(pBuffer, check_buff, NumToRead);
+            ret = true;
             break;
         }
         else
         {
+            ret = false;
             ESP_LOGE(TAG, "E2P_Read err!!!");
         }
     }
+    if (ret == false)
+    {
+        ESP_LOGE(TAG, "%d", __LINE__);
+        E2prom_empty_all(false);
+        ESP_LOGI(TAG, "%d", __LINE__);
+        esp_restart();
+    }
+
     free(check_buff);
 }
 //在AT24CXX里面的指定地址开始写入指定个数的数据
@@ -475,7 +498,7 @@ esp_err_t E2P_Empty(uint16_t start_add, uint16_t end_add)
     {
         while (len)
         {
-            AT24CXX_WriteOneByte(DEV_ADD, 0);
+            AT24CXX_WriteOneByte(len - 1, 0);
             len--;
         }
     }
@@ -519,39 +542,8 @@ void E2prom_set_defaul(bool flag)
     //写入默认值
     ESP_LOGI(TAG, "set defaul\n");
 
-    // if (flag == true)
-    // {
-    //     E2P_Write(SERISE_NUM_ADDR, (uint8_t *)SerialNum, SERISE_NUM_LEN);
-    //     E2P_Write(PRODUCT_ID_ADDR, (uint8_t *)ProductId, PRODUCT_ID_LEN);
-    //     E2P_Write(WEB_HOST_ADD, (uint8_t *)WEB_SERVER, WEB_HOST_LEN);
-    //     E2P_Write(WEB_PORT_ADD, (uint8_t *)WEB_PORT, 5);
-    //     E2P_Write(MQTT_HOST_ADD, (uint8_t *)MQTT_SERVER, WEB_HOST_LEN);
-    //     E2P_Write(MQTT_PORT_ADD, (uint8_t *)MQTT_PORT, 5);
-    // }
-
     E2P_WriteLenByte(FN_DP_ADD, 60, 4);
-    // E2P_WriteLenByte(FN_ELE_QUAN_ADD, fn_sw_pc, 4);
-    // E2P_WriteLenByte(FN_ENERGY_ADD, fn_sw_e, 4);
     E2P_WriteOneByte(CG_DATA_LED_ADD, 1);
-    // E2P_WriteOneByte(RSSI_NUM_ADDR, rssi_w_f_num);
-    // E2P_WriteOneByte(GPRS_RSSI_NUM_ADDR, rssi_g_f_num);
-    // E2P_WriteOneByte(RS485_LIGHT_NUM_ADDR, r1_light_f_num);
-    // E2P_WriteOneByte(RS485_TEMP_NUM_ADDR, r1_th_t_f_num);
-    // E2P_WriteOneByte(RS485_HUMI_NUM_ADDR, r1_th_h_f_num);
-    // E2P_WriteOneByte(RS485_STEMP_NUM_ADDR, r1_sth_t_f_num);
-    // E2P_WriteOneByte(RS485_SHUMI_NUM_ADDR, r1_sth_h_f_num);
-    // E2P_WriteOneByte(EXT_TEMP_NUM_ADDR, e1_t_f_num);
-    // E2P_WriteOneByte(RS485_T_NUM_ADDR, r1_t_f_num);
-    // E2P_WriteOneByte(RS485_WS_NUM_ADDR, r1_ws_f_num);
-    // E2P_WriteOneByte(RS485_CO2_NUM_ADDR, r1_co2_f_num);
-    // E2P_WriteOneByte(RS485_PH_NUM_ADDR, r1_ph_f_num);
-    // E2P_WriteOneByte(SW_S_F_NUM_ADDR, sw_s_f_num);
-    // E2P_WriteOneByte(SW_V_F_NUM_ADDR, sw_v_f_num);
-    // E2P_WriteOneByte(SW_C_F_NUM_ADDR, sw_c_f_num);
-    // E2P_WriteOneByte(SW_P_F_NUM_ADDR, sw_p_f_num);
-    // E2P_WriteOneByte(SW_PC_F_NUM_ADDR, sw_pc_f_num);
-    // E2P_WriteOneByte(RS485_CO2_T_NUM_ADDR, r1_co2_t_f_num);
-    // E2P_WriteOneByte(RS485_CO2_H_NUM_ADDR, r1_co2_h_f_num);
 }
 
 //检查AT24CXX是否正常,以及是否为新EEPROM
@@ -560,7 +552,7 @@ void E2prom_set_defaul(bool flag)
 
 static bool E2P_Check(void)
 {
-    uint8_t Check_dat = 0x55;
+    uint8_t Check_dat = 0x11;
     uint8_t temp;
     esp_err_t ret;
     i2c_cmd_handle_t cmd;
@@ -607,6 +599,9 @@ static bool E2P_Check(void)
         }
     }
 
+    AT24_Read((E2P_SIZE - 100), &temp, 1);
+    ESP_LOGI(TAG, "temp:%2x", temp);
+
     if (E2P_M)
         FM24C_Read((E2P_SIZE - 1), &temp, 1);
     else
@@ -628,7 +623,7 @@ static bool E2P_Check(void)
 
     if (temp == Check_dat)
     {
-        ESP_LOGI(TAG, "eeprom check ok!\n");
+        ESP_LOGI(TAG, "eeprom check ok 1!\n");
         return true;
     }
     else //排除第一次初始化的情况
@@ -646,7 +641,7 @@ static bool E2P_Check(void)
 
         if (temp == Check_dat)
         {
-            ESP_LOGI(TAG, "eeprom check ok!\n");
+            ESP_LOGI(TAG, "eeprom check ok 2!\n");
             return true;
         }
     }

@@ -25,6 +25,7 @@ EventGroupHandle_t Sw_sta_group;
 extern bool sw_sta; //1 合闸
 extern bool f_sta;  //0 复位
 extern bool m_sta;  //0 复位
+extern bool c_type_flag;
 
 void Switch_Init(void);
 void Switch_Relay(int8_t set_value);

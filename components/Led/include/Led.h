@@ -8,8 +8,8 @@ TaskHandle_t Led_Task_Handle;
 extern void Led_Init(void);
 
 extern bool E2P_FLAG;
-extern bool FLASH_FLAG;
-extern bool CSE_FLAG;
+extern bool HLW_FLAG;
+extern bool MECH_FLAG;
 
 extern bool Set_defaul_flag;
 extern bool Net_sta_flag;

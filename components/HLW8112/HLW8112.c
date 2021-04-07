@@ -8,7 +8,6 @@
   * Record	   : 2020/04/02, V1.3	
 ==========================================================================================================*/
 /* Includes ----------------------------------------------------------------------------------------------*/
-#include "HLW8112.h"
 
 #include <stdio.h>
 #include <math.h>
@@ -21,6 +20,10 @@
 #include "driver/gpio.h"
 #include "esp_log.h"
 #include "Switch.h"
+#include "Led.h"
+#include "Json_parse.h"
+
+#include "HLW8112.h"
 
 //extern unsigned char UART_EN;
 //extern unsigned char SPI_EN;
@@ -328,12 +331,14 @@ unsigned char Judge_CheckSum_HLW8112_Calfactor(void)
     if (U16_CheckSUM_Data == U16_CheckSUM_RegData)
     {
         d = 1;
+        HLW_FLAG = true;
         // printf("系数寄存器校验ok\r\n");
     }
     else
     {
         d = 0;
-        printf("系数寄存器校验fail\r\n");
+        HLW_FLAG = false;
+        // printf("系数寄存器校验fail\r\n");
     }
 
     return d;
@@ -646,7 +651,7 @@ void Read_HLW8112_PB_I(void)
 
     //计算,U16_AC_I_B = (U32_RMSIB_RegData * U16_RMSIBC_RegData)/2^23
     U32_RMSIB_RegData = Read_HLW8112_RegData(REG_RMSIB_ADDR, 3);
-    ESP_LOGI(TAG, "U32_RMSIB_RegData:%ld", U32_RMSIB_RegData);
+    // ESP_LOGI(TAG, "U32_RMSIB_RegData:%ld", U32_RMSIB_RegData);
     if ((U32_RMSIB_RegData & 0x800000) == 0x800000)
     {
         F_AC_I_B = 0;
@@ -1104,50 +1109,23 @@ void HLW_Read_Task(void *arg)
             // printf("\r\n\r\n"); //插入换行
             // printf("A通道电能参数\r\n");
             // printf("F_AC_V = %f V \n ", F_AC_V);   //电压
-            printf("F_AC_I = %f A \n", F_AC_I); //A通道电流
-            printf("F_AC_P = %f W \n", F_AC_P); //A通道功率
+            // printf("F_AC_I = %f A \n", F_AC_I); //A通道电流
+            // printf("F_AC_P = %f W \n", F_AC_P); //A通道功率
             // printf("F_AC_E = %f KWH \n ", F_AC_E); //A通道电量
 
             // // printf("\r\n\r\n"); //插入换行
             // printf("B通道电能参数\r\n");
-            printf("F_AC_I_B = %f A \n", F_AC_I_B); //B通道电流
-                                                    // printf("F_AC_P_B = %f W \n ", F_AC_P_B); //B通道功率
-                                                    // printf("F_AC_E_B = %f KWH \n ", F_AC_E_B); //B通道电量
+            // printf("F_AC_I_B = %f A \n", F_AC_I_B); //B通道电流
+            // printf("F_AC_P_B = %f W \n ", F_AC_P_B); //B通道功率
+            // printf("F_AC_E_B = %f KWH \n ", F_AC_E_B); //B通道电量
 
             // printf("dat:%.3f,%.3f,%.3f\n", F_AC_V, F_AC_I, F_AC_P);
 
             // printf("\r\n\r\n");                                   //插入换行
             // printf("F_AC_PF = %f\n ", F_AC_PF);                   //A通道功率因素
-            printf("F_AC_LINE_Freq = %f Hz \n", F_AC_LINE_Freq); //F_AC_LINE_Freq
+            // printf("F_AC_LINE_Freq = %f Hz \n", F_AC_LINE_Freq); //F_AC_LINE_Freq
             // printf("F_Angle = %f\n ", F_Angle);
 
-            // printf("\r\n\r\n"); //插入换行
-            // printf("电能参数\r\n");
-            // printf("U32_RMSIA_RegData = %lx\n ", U32_RMSIA_RegData);
-            // printf("U32_RMSIB_RegData = %lx\n ", U32_RMSIB_RegData);
-            // printf("U32_RMSU_RegData = %lx\n ", U32_RMSU_RegData);
-            // printf("U32_POWERPA_RegData = %lx\n ", U32_POWERPA_RegData);
-            // printf("U32_POWERPB_RegData = %lx\n ", U32_POWERPB_RegData);
-            // printf("U16_AngleData = %x\n ", U16_AngleData);
-            // printf("U16_PFData = %x\n ", U16_PFData);
-            // printf("U16_LineFData = %x\n ", U16_LineFData);
-            // printf("U16_IFData = %x\n ", U16_IFData);
-            // printf("U16_RIFData = %x\n ", U16_RIFData);
-
-            // printf("\r\n\r\n"); //插入换行
-            // printf("A通道电流转换系数:%x\n ", U16_RMSIAC_RegData);
-            // printf("B通道电流转换系数:%x\n ", U16_RMSIBC_RegData);
-            // printf("电压通道转换系数:%x\n ", U16_RMSUC_RegData);
-            // printf("A通道功率转换系数:%x\n ", U16_PowerPAC_RegData);
-            // printf("B通道功率转换系数:%x\n ", U16_PowerPBC_RegData);
-            // printf("A通道电量转换系数:%x\n ", U16_EnergyAC_RegData);
-            // printf("B通道电量转换系数:%x\n ", U16_EnergyBC_RegData);
-            // printf("U16_CheckSUM_RegData = %x\n ", U16_CheckSUM_RegData);
-            // printf("U16_CheckSUM_Data = %x\n ", U16_CheckSUM_Data);
-
-            // printf("----------------------------------------------\r\n");
-            // printf("----------------------------------------------\r\n");
-            // ulTaskNotifyTake(pdTRUE, -1);
             ulTaskNotifyTake(pdTRUE, 5000 / portTICK_RATE_MS);
             // vTaskDelay(1000 / portTICK_RATE_MS);
         }
@@ -1173,6 +1151,8 @@ void HLW_INT_Task(void *arg)
             switch (io_num)
             {
             case HLW_INT2:
+                memset(C_TYPE, 0, sizeof(C_TYPE));
+                memcpy(C_TYPE, "protection", 11);
                 Switch_Relay(0);
 
                 xSemaphoreTake(HLW_muxtex, -1);

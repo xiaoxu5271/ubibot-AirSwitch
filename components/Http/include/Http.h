@@ -6,7 +6,7 @@
 #include "freertos/event_groups.h"
 #include "freertos/semphr.h"
 
-#define FIRMWARE "CP1-V0.0.1"
+#define FIRMWARE "CB1-V0.0.1"
 
 #define POST_NORMAL 0X00
 #define POST_HEIGHT_ADD 0X01
@@ -62,6 +62,7 @@ void initialise_http(void);
 void http_send_mes(void);
 void Start_Active(void);
 int32_t http_post_init(uint32_t Content_Length);
+void DataSave(uint8_t *sava_buff, uint16_t Buff_len);
 int8_t http_send_post(int32_t s, char *post_buf, bool end_flag);
 bool http_post_read(int32_t s, char *recv_buff, uint16_t buff_size);
 

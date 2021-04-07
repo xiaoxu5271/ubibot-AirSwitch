@@ -13,6 +13,7 @@
 #include "esp_system.h"
 #include "esp_spi_flash.h"
 #include "esp_log.h"
+#include "nvs_flash.h"
 
 #include "Http.h"
 #include "Smartconfig.h"
@@ -26,6 +27,7 @@
 #include "Json_parse.h"
 #include "user_key.h"
 #include "My_Mqtt.h"
+#include "Bluetooth.h"
 
 void app_main()
 {
@@ -37,6 +39,7 @@ void app_main()
 	Cache_muxtex = xSemaphoreCreateMutex();
 	xMutex_Http_Send = xSemaphoreCreateMutex(); //创建HTTP发送互斥信号
 	Net_sta_group = xEventGroupCreate();
+	Send_Mqtt_Queue = xQueueCreate(1, sizeof(Mqtt_Msg));
 
 	/* Print chip information */
 	esp_chip_info_t chip_info;
@@ -60,6 +63,17 @@ void app_main()
 	Uart_Init();
 	user_app_key_init();
 	HLW_Init();
+
+	esp_err_t ret = nvs_flash_init();
+	if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND)
+	{
+		ESP_ERROR_CHECK(nvs_flash_erase());
+		ret = nvs_flash_init();
+	}
+	ESP_ERROR_CHECK(ret);
+
+	ble_app_init();
+	init_wifi();
 
 	initialise_http(); //须放在 采集任务建立之后
 	initialise_mqtt();
