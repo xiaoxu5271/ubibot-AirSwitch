@@ -34,6 +34,7 @@ typedef enum
 {
     NET_OK = 0,
     NET_DIS,
+    NET_READ,
     NET_410,
     NET_400,
     NET_402,

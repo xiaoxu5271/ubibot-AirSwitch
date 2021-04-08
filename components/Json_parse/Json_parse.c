@@ -72,6 +72,8 @@ char BleName[100] = {0};
 
 //c-type
 char C_TYPE[20] = "initial";
+char WARN_CODE[25] = {0};
+char ERROE_CODE[25] = {0};
 
 //cali 相关 f1_a,f1_b,f1_a,f2_b,,,,,
 f_cali f_cali_u[40] = {
@@ -401,7 +403,7 @@ esp_err_t parse_objects_http_active(char *http_json_data)
     if (resp_val == NULL)
     {
         ESP_LOGE("JSON", "DATA NO JSON");
-        return 0;
+        return ESP_FAIL;
     }
     json_data_parse = cJSON_Parse(resp_val);
 
@@ -410,7 +412,7 @@ esp_err_t parse_objects_http_active(char *http_json_data)
         // ESP_LOGI(TAG,"Json Formatting error3\n");
         ESP_LOGE(TAG, "%s", http_json_data);
         cJSON_Delete(json_data_parse);
-        return 0;
+        return ESP_FAIL;
     }
     else
     {
@@ -426,7 +428,7 @@ esp_err_t parse_objects_http_active(char *http_json_data)
         {
             ESP_LOGE(TAG, "active:error\r\n");
             cJSON_Delete(json_data_parse);
-            return 0;
+            return ESP_FAIL;
         }
 
         if (cJSON_GetObjectItem(json_data_parse, "channel") != NULL)
@@ -468,7 +470,7 @@ esp_err_t parse_objects_http_active(char *http_json_data)
         }
     }
     cJSON_Delete(json_data_parse);
-    return 1;
+    return ESP_OK;
 }
 
 //解析http-post返回数据
@@ -483,7 +485,7 @@ esp_err_t parse_objects_http_respond(char *http_json_data)
     if (resp_val == NULL)
     {
         ESP_LOGE(TAG, "%d", __LINE__);
-        return 0;
+        return ESP_FAIL;
     }
     json_data_parse = cJSON_Parse(resp_val);
 
@@ -493,7 +495,7 @@ esp_err_t parse_objects_http_respond(char *http_json_data)
         // ESP_LOGI(TAG,"Json Formatting error3\n");
         ESP_LOGE(TAG, "%s", http_json_data);
         cJSON_Delete(json_data_parse);
-        return 0;
+        return ESP_FAIL;
     }
     else
     {
@@ -532,7 +534,7 @@ esp_err_t parse_objects_http_respond(char *http_json_data)
     }
 
     cJSON_Delete(json_data_parse);
-    return 1;
+    return ESP_OK;
 }
 
 esp_err_t parse_objects_heart(char *json_data)
@@ -545,7 +547,7 @@ esp_err_t parse_objects_heart(char *json_data)
     if (resp_val == NULL)
     {
         ESP_LOGE("JSON", "DATA NO JSON");
-        return 0;
+        return ESP_FAIL;
     }
     json_data_parse = cJSON_Parse(resp_val);
 
@@ -555,7 +557,7 @@ esp_err_t parse_objects_heart(char *json_data)
         ESP_LOGE(TAG, "Json Formatting error4\n");
 
         cJSON_Delete(json_data_parse);
-        return 0;
+        return ESP_FAIL;
     }
     else
     {
@@ -569,11 +571,11 @@ esp_err_t parse_objects_heart(char *json_data)
         {
             ESP_LOGE(TAG, "active:error\r\n");
             cJSON_Delete(json_data_parse);
-            return 0;
+            return ESP_FAIL;
         }
     }
     cJSON_Delete(json_data_parse);
-    return 1;
+    return ESP_OK;
 }
 
 //解析MQTT指令
@@ -657,9 +659,7 @@ esp_err_t parse_objects_mqtt(char *mqtt_json_data, bool sw_flag)
                     pSubSubSub = cJSON_GetObjectItem(json_data_parse_1, "c_type");
                     if (pSubSubSub != NULL)
                     {
-                        memset(C_TYPE, 0, sizeof(C_TYPE));
-                        memcpy(C_TYPE, pSubSubSub->valuestring, strlen(pSubSubSub->valuestring));
-                        c_type_flag = true;
+                        snprintf(C_TYPE, sizeof(C_TYPE), "%s", pSubSubSub->valuestring);
                         // ESP_LOGI(TAG, "C_TYPE=%s", pSubSubSub->valuestring);
                     }
                     pSubSubSub = cJSON_GetObjectItem(json_data_parse_1, "set_state");
@@ -682,53 +682,51 @@ uint16_t Create_Status_Json(char *status_buff, uint16_t buff_len, bool filed_fla
     uint8_t mac_sys[6] = {0};
     char *ssid64_buff;
     esp_read_mac(mac_sys, 0); //获取芯片内部默认出厂MAC
+    ssid64_buff = (char *)malloc(64);
+    memset(ssid64_buff, 0, 64);
+    base64_encode(wifi_data.wifi_ssid, strlen(wifi_data.wifi_ssid), ssid64_buff, 64);
+
+    snprintf(status_buff, buff_len, "],\"status\":\"mac=%02X:%02X:%02X:%02X:%02X:%02X,lock=%d,c_type=%s",
+             mac_sys[0],
+             mac_sys[1],
+             mac_sys[2],
+             mac_sys[3],
+             mac_sys[4],
+             mac_sys[5],
+             f_sta,
+             C_TYPE);
+
+    if (strlen(WARN_CODE) != 0)
+    {
+        snprintf(status_buff + strlen(status_buff), buff_len - strlen(status_buff), ",warning=%s", WARN_CODE);
+        memset(WARN_CODE, 0, sizeof(WARN_CODE));
+    }
+    if (strlen(ERROE_CODE) != 0)
+    {
+        snprintf(status_buff + strlen(status_buff), buff_len - strlen(status_buff), ",errors=%s", ERROE_CODE);
+        memset(ERROE_CODE, 0, sizeof(ERROE_CODE));
+    }
+
+    snprintf(status_buff + strlen(status_buff), buff_len - strlen(status_buff), "\",\"ssid_base64\":\"%s\"", ssid64_buff);
 
     if (filed_flag == true)
     {
         char *field_buff;
         field_buff = (char *)malloc(FILED_BUFF_SIZE);
-        // cali_buff = (char *)malloc(CALI_BUFF_SIZE);
         memset(field_buff, 0, FILED_BUFF_SIZE);
-        // memset(cali_buff, 0, CALI_BUFF_SIZE);
         Create_fields_num(field_buff);
-        // Create_cali_buf(cali_buff);
 
-        ssid64_buff = (char *)malloc(64);
-        memset(ssid64_buff, 0, 64);
-        base64_encode(wifi_data.wifi_ssid, strlen(wifi_data.wifi_ssid), ssid64_buff, 64);
-
-        snprintf(status_buff, buff_len, "],\"status\":\"mac=%02X:%02X:%02X:%02X:%02X:%02X,c_type=%s\",\"ssid_base64\":\"%s\",\"sensors\":[%s]}",
-                 mac_sys[0],
-                 mac_sys[1],
-                 mac_sys[2],
-                 mac_sys[3],
-                 mac_sys[4],
-                 mac_sys[5],
-                 C_TYPE,
-                 ssid64_buff,
+        snprintf(status_buff + strlen(status_buff), buff_len - strlen(status_buff), ",\"sensors\":[%s]}",
                  field_buff);
-        free(ssid64_buff);
 
         free(field_buff);
     }
     else
     {
-
-        ssid64_buff = (char *)malloc(64);
-        memset(ssid64_buff, 0, 64);
-        base64_encode(wifi_data.wifi_ssid, strlen(wifi_data.wifi_ssid), ssid64_buff, 64);
-
-        snprintf(status_buff, buff_len, "],\"status\":\"mac=%02x:%02x:%02x:%02x:%02x:%02x,c_type=%s\",\"ssid_base64\":\"%s\"}",
-                 mac_sys[0],
-                 mac_sys[1],
-                 mac_sys[2],
-                 mac_sys[3],
-                 mac_sys[4],
-                 mac_sys[5],
-                 C_TYPE,
-                 ssid64_buff);
-        free(ssid64_buff);
+        snprintf(status_buff + strlen(status_buff), buff_len - strlen(status_buff), "}");
     }
+
+    free(ssid64_buff);
 
     return strlen(status_buff);
 }
@@ -1496,7 +1494,6 @@ void Read_Metadate_E2p(void)
     //上电启动
 
     ESP_LOGI(TAG, "de_sw_s=%d", de_sw_s);
-    c_type_flag = true;
     switch (de_sw_s)
     {
     case 0:

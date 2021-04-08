@@ -85,7 +85,19 @@ void timer_heart_cb(void *arg)
     if (fn_sw_e)
         if (min_num % fn_sw_e == 0)
         {
-            // vTaskNotifyGiveFromISR(Binary_energy, NULL);
+            vTaskNotifyGiveFromISR(Binary_energy, NULL);
+        }
+
+    if (fn_sw_pc)
+        if (min_num % fn_sw_pc == 0)
+        {
+            vTaskNotifyGiveFromISR(Binary_ele_quan, NULL);
+        }
+
+    if (fn_sw_on)
+        if (min_num % fn_sw_on == 0)
+        {
+            // vTaskNotifyGiveFromISR(Sw_on_Task_Handle, NULL);
         }
 }
 
@@ -339,7 +351,7 @@ Net_Err Send_herat(void)
 
     if ((http_send_buff(build_heart_url, 256, recv_buf, HTTP_RECV_BUFF_LEN)) > 0)
     {
-        if (parse_objects_heart(recv_buf))
+        if (parse_objects_heart(recv_buf) == ESP_OK)
         {
             //successed
             ret = NET_OK;
@@ -381,7 +393,7 @@ void send_heart_task(void *arg)
                 Start_Active();
                 break;
             }
-            vTaskDelay(10000 / portTICK_PERIOD_MS);
+            vTaskDelay(30000 / portTICK_PERIOD_MS);
         }
 
         ulTaskNotifyTake(pdTRUE, -1);
@@ -482,14 +494,14 @@ static Net_Err Http_post_fun(void)
     if (http_post_read(socket_num, recv_buff, HTTP_RECV_BUFF_LEN) == false)
     {
         ESP_LOGE(TAG, "ERR LINE%d", __LINE__);
-        ret = NET_DIS;
+        ret = NET_READ;
         Net_sta_flag = false;
         goto end;
     }
     ESP_LOGI(TAG, "ERR LINE%d", __LINE__);
     // printf("解析返回数据！\n");
     ESP_LOGI(TAG, "mes recv %d,\n:%s", strlen(recv_buff), recv_buff);
-    if (parse_objects_http_respond(recv_buff))
+    if (parse_objects_http_respond(recv_buff) == ESP_OK)
     {
         ret = NET_OK;
         Net_sta_flag = true;
@@ -499,6 +511,7 @@ static Net_Err Http_post_fun(void)
     {
         ret = NET_400;
         Net_sta_flag = false;
+        ESP_LOGE(TAG, "ERR LINE%d", __LINE__);
         goto end;
     }
 
@@ -506,12 +519,18 @@ end:
     xSemaphoreGive(Cache_muxtex);
     xSemaphoreGive(xMutex_Http_Send);
     free(status_buff);
-    memset(Databuffer, 0, Databuffer_len);
+    free(recv_buff);
+
     if (ret == NET_OK)
     {
         memset(Databuffer, 0, Databuffer_len);
         Databuffer_len = 0;
     }
+    else //还原数据
+    {
+        Databuffer[Databuffer_len - 1] = ',';
+    }
+
     return ret;
 }
 
@@ -522,15 +541,16 @@ void send_data_task(void *arg)
     while (1)
     {
         ulTaskNotifyTake(pdTRUE, -1);
+
         Create_NET_Json();
         while ((ret = Http_post_fun()) != NET_OK)
         {
-            if (ret != NET_DIS)
+            if (ret == NET_DIS)
             {
                 Start_Active();
                 break;
             }
-            vTaskDelay(500 / portTICK_PERIOD_MS);
+            vTaskDelay(30000 / portTICK_PERIOD_MS);
         }
     }
 }
@@ -555,7 +575,7 @@ uint16_t http_activate(void)
     }
     else
     {
-        if (parse_objects_http_active(recv_buf))
+        if (parse_objects_http_active(recv_buf) == ESP_OK)
         {
             Net_sta_flag = true;
             ret = 1;

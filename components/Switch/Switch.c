@@ -78,6 +78,7 @@ void Switch_Relay(int8_t set_value)
     //切换
     if (set_value == -1)
     {
+        c_type_flag = true;
         if (sw_sta == 1) //分闸
         {
             gpio_set_level(EN_TRIP, 1);
@@ -101,6 +102,7 @@ void Switch_Relay(int8_t set_value)
         }
         else
         {
+            c_type_flag = true;
             gpio_set_level(M_IN1, 0);
             gpio_set_level(M_IN2, 1);
 
@@ -117,6 +119,7 @@ void Switch_Relay(int8_t set_value)
         }
         else
         {
+            c_type_flag = true;
             gpio_set_level(EN_TRIP, 1);
             esp_timer_start_once(timer_trip_handle, TRIP_EN_TIME);
         }
@@ -232,14 +235,9 @@ void HALL_Task(void *arg)
                 //齿轮复位状态，代表外部手动操作合闸
                 if (c_type_flag == false)
                 {
-                    // if (m_sta == 0 && sw_sta == 1)
-                    // {
-                    //     memset(C_TYPE, 0, sizeof(C_TYPE));
-                    //     memcpy(C_TYPE, "physical_p", 11);
-                    // }
-
                     memset(C_TYPE, 0, sizeof(C_TYPE));
                     memcpy(C_TYPE, "physical_p", 11);
+                    snprintf(C_TYPE, sizeof(C_TYPE), "physical_p");
                 }
                 else
                 {
@@ -247,6 +245,10 @@ void HALL_Task(void *arg)
                 }
 
                 Create_Switch_Json();
+                if (Binary_dp != NULL)
+                {
+                    xTaskNotifyGive(Binary_dp);
+                }
                 break;
 
             case HALL_F:
@@ -286,6 +288,7 @@ void Switch_Init(void)
     gpio_config(&io_conf);
 
     gpio_evt_queue = xQueueCreate(10, sizeof(uint32_t));
+    xTaskCreate(Sw_on_quan_Task, "sw on quan", 4096, NULL, 5, &Sw_on_Task_Handle);
     xTaskCreate(HALL_Task, "HALL_Task", 4096, NULL, 10, NULL);
     esp_timer_create(&timer_trip_arg, &timer_trip_handle);
     esp_timer_create(&timer_motor_arg, &timer_motor_handle);

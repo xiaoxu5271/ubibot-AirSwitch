@@ -19,9 +19,13 @@
 #include "freertos/semphr.h"
 #include "driver/gpio.h"
 #include "esp_log.h"
+#include <cJSON.h>
 #include "Switch.h"
 #include "Led.h"
 #include "Json_parse.h"
+#include "Http.h"
+#include "Smartconfig.h"
+#include "ServerTimer.h"
 
 #include "HLW8112.h"
 
@@ -1020,7 +1024,6 @@ void Read_HLW8112_State(void)
 =====================================================*/
 void HLW_Read_Task(void *arg)
 {
-
     while (1)
     {
         vTaskDelay(500 / portTICK_PERIOD_MS);
@@ -1094,40 +1097,14 @@ void HLW_Read_Task(void *arg)
             Read_HLW8112_PA_I();
             Read_HLW8112_U();
             Read_HLW8112_PA();
+            Read_HLW8112_PB_I();
             Read_HLW8112_EA();
+
             Read_HLW8112_Linefreq();
             Read_HLW8112_Angle();
-            // Read_HLW8112_State();
-            // Read_HLW8112_PF();
-            Read_HLW8112_PB_I();
-            // Read_HLW8112_PB();
-            // Read_HLW8112_EB();
-            xSemaphoreGive(HLW_muxtex);
+            Read_HLW8112_PF();
 
-            // printf("交流测量-SPI通讯 \r\n");
-
-            // printf("\r\n\r\n"); //插入换行
-            // printf("A通道电能参数\r\n");
-            // printf("F_AC_V = %f V \n ", F_AC_V);   //电压
-            // printf("F_AC_I = %f A \n", F_AC_I); //A通道电流
-            // printf("F_AC_P = %f W \n", F_AC_P); //A通道功率
-            // printf("F_AC_E = %f KWH \n ", F_AC_E); //A通道电量
-
-            // // printf("\r\n\r\n"); //插入换行
-            // printf("B通道电能参数\r\n");
-            // printf("F_AC_I_B = %f A \n", F_AC_I_B); //B通道电流
-            // printf("F_AC_P_B = %f W \n ", F_AC_P_B); //B通道功率
-            // printf("F_AC_E_B = %f KWH \n ", F_AC_E_B); //B通道电量
-
-            // printf("dat:%.3f,%.3f,%.3f\n", F_AC_V, F_AC_I, F_AC_P);
-
-            // printf("\r\n\r\n");                                   //插入换行
-            // printf("F_AC_PF = %f\n ", F_AC_PF);                   //A通道功率因素
-            // printf("F_AC_LINE_Freq = %f Hz \n", F_AC_LINE_Freq); //F_AC_LINE_Freq
-            // printf("F_Angle = %f\n ", F_Angle);
-
-            ulTaskNotifyTake(pdTRUE, 5000 / portTICK_RATE_MS);
-            // vTaskDelay(1000 / portTICK_RATE_MS);
+            vTaskDelay(100 / portTICK_RATE_MS);
         }
     }
 }
@@ -1151,8 +1128,10 @@ void HLW_INT_Task(void *arg)
             switch (io_num)
             {
             case HLW_INT2:
-                memset(C_TYPE, 0, sizeof(C_TYPE));
-                memcpy(C_TYPE, "protection", 11);
+
+                snprintf(C_TYPE, sizeof(C_TYPE), "protection");
+                snprintf(WARN_CODE, sizeof(WARN_CODE), "warn_leakage");
+
                 Switch_Relay(0);
 
                 xSemaphoreTake(HLW_muxtex, -1);
@@ -1179,6 +1158,71 @@ void HLW_INT_Task(void *arg)
                 break;
             }
         }
+    }
+}
+
+//电能信息构建
+void HLW_Energy_Task(void *arg)
+{
+    char *filed_buff;
+    char *OutBuffer;
+    char *time_buff;
+    // uint8_t *SaveBuffer;
+    uint16_t len = 0;
+    cJSON *pJsonRoot;
+
+    while (1)
+    {
+        ulTaskNotifyTake(pdTRUE, -1);
+        // if ((xEventGroupWaitBits(Net_sta_group, CSE_CHECK_BIT, true, true, 1000 / portTICK_RATE_MS) & CSE_CHECK_BIT) == CSE_CHECK_BIT)
+        // {
+        if (((xEventGroupGetBits(Net_sta_group) & TIME_CAL_BIT) == TIME_CAL_BIT) && HLW_FLAG)
+        {
+            filed_buff = (char *)malloc(9);
+            time_buff = (char *)malloc(24);
+            Server_Timer_SEND(time_buff);
+            pJsonRoot = cJSON_CreateObject();
+            cJSON_AddStringToObject(pJsonRoot, "created_at", (const char *)time_buff);
+            // cJSON_AddItemToObject(pJsonRoot, "field1", cJSON_CreateNumber(mqtt_json_s.mqtt_switch_status));
+
+            snprintf(filed_buff, 9, "field%d", f_sw_v);
+            cJSON_AddItemToObject(pJsonRoot, filed_buff, cJSON_CreateNumber(F_AC_V));
+            //通电测上传 电流，功率，漏电流数据
+            if (sw_sta == 1)
+            {
+                snprintf(filed_buff, 9, "field%d", f_sw_c);
+                cJSON_AddItemToObject(pJsonRoot, filed_buff, cJSON_CreateNumber(F_AC_I));
+                snprintf(filed_buff, 9, "field%d", f_sw_p);
+                cJSON_AddItemToObject(pJsonRoot, filed_buff, cJSON_CreateNumber(F_AC_P));
+                snprintf(filed_buff, 9, "field%d", f_sw_lc);
+                cJSON_AddItemToObject(pJsonRoot, filed_buff, cJSON_CreateNumber(F_AC_I_B));
+            }
+
+            OutBuffer = cJSON_PrintUnformatted(pJsonRoot); //cJSON_Print(Root)
+            if (OutBuffer != NULL)
+            {
+                len = strlen(OutBuffer);
+                ESP_LOGI(TAG, "len:%d\n%s\n", len, OutBuffer);
+
+                xSemaphoreTake(Cache_muxtex, -1);
+                DataSave((uint8_t *)OutBuffer, len);
+                xSemaphoreGive(Cache_muxtex);
+                cJSON_free(OutBuffer);
+            }
+            cJSON_Delete(pJsonRoot); //delete cjson root
+            free(filed_buff);
+            free(time_buff);
+        }
+        // }
+    }
+}
+
+//累计用电量构建
+void HLW_Quan_Task(void *arg)
+{
+    while (1)
+    {
+        /* code */
     }
 }
 
@@ -1216,4 +1260,6 @@ void HLW_Init(void)
 
     xTaskCreate(HLW_INT_Task, "HLW_INT_Task", 2048, NULL, 4, NULL);
     xTaskCreate(HLW_Read_Task, "HLW_Read_Task", 4096, NULL, 5, &HLW_Read_Task_Hanlde);
+    xTaskCreate(HLW_Energy_Task, "HLW_Energy_Task", 4096, NULL, 6, &Binary_energy);
+    // xTaskCreate(HLW_Quan_Task, "HLW_Quan_Task", 4096, NULL, 7, &Binary_ele_quan);
 }
