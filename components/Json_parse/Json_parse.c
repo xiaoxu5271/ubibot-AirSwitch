@@ -20,6 +20,7 @@
 #include "my_base64.h"
 #include "Switch.h"
 #include "My_Mqtt.h"
+#include "HLW8112.h"
 
 #include "Json_parse.h"
 
@@ -35,9 +36,9 @@ uint32_t fn_lc = 30;      //漏电保护设置 10-100 ，0关闭
 uint32_t fn_oc = 0;       //过流保护设置，0关闭
 uint32_t fn_ov = 0;       //过压保护设置，0关闭
 uint32_t fn_sag = 60;     //欠压保护设置，0关闭
-uint32_t fn_op = 3600;    //过载保护设置，0关闭
+uint32_t fn_op = 0;       //过载保护设置，0关闭
 uint32_t fn_sw_e = 0;     //电能信息采集周期：电压/电流/功率
-uint32_t fn_sw_pc = 0;    //用电量统计
+uint32_t fn_sw_pc = 3600; //用电量统计
 uint8_t cg_data_led = 1;  //发送数据 LED状态 0关闭，1打开
 uint8_t de_sw_s = 0;      //开关默认上电状态
 uint32_t fn_sw_on = 3600; //开启时长统计
@@ -231,6 +232,7 @@ static short Parse_metadata(char *ptrptr)
         {
             fn_lc = (uint32_t)pSubSubSub->valueint;
             E2P_WriteLenByte(FN_LC_ADD, fn_lc, 4);
+            HLW_Set_Flag = false;
             ESP_LOGI(TAG, "fn_lc = %d\n", fn_lc);
         }
     }
@@ -449,7 +451,7 @@ esp_err_t parse_objects_http_active(char *http_json_data)
             {
                 strcpy(ApiKey, json_data_parse_channel_channel_write_key->valuestring);
                 ESP_LOGI(TAG, "api_key:%s\n", ApiKey);
-                E2P_Write(API_KEY_ADD, (uint8_t *)ApiKey, API_KEY_LEN);
+                // E2P_Write(API_KEY_ADD, (uint8_t *)ApiKey, API_KEY_LEN);
             }
 
             //写入channelid
@@ -457,7 +459,7 @@ esp_err_t parse_objects_http_active(char *http_json_data)
             {
                 strcpy(ChannelId, json_data_parse_channel_channel_id_value->valuestring);
                 ESP_LOGI(TAG, "ChannelId:%s\n", ChannelId);
-                E2P_Write(CHANNEL_ID_ADD, (uint8_t *)ChannelId, CHANNEL_ID_LEN);
+                // E2P_Write(CHANNEL_ID_ADD, (uint8_t *)ChannelId, CHANNEL_ID_LEN);
             }
 
             //写入user_id
@@ -465,7 +467,7 @@ esp_err_t parse_objects_http_active(char *http_json_data)
             {
                 strcpy(USER_ID, json_data_parse_channel_user_id->valuestring);
                 ESP_LOGI(TAG, "USER_ID:%s\n", USER_ID);
-                E2P_Write(USER_ID_ADD, (uint8_t *)USER_ID, USER_ID_LEN);
+                // E2P_Write(USER_ID_ADD, (uint8_t *)USER_ID, USER_ID_LEN);
             }
         }
     }
@@ -1563,12 +1565,12 @@ void Read_Product_E2p(void)
     ESP_LOGI(TAG, "MQTT_SERVER=%s\n", MQTT_SERVER);
     E2P_Read(MQTT_PORT_ADD, (uint8_t *)MQTT_PORT, 5);
     ESP_LOGI(TAG, "MQTT_PORT=%s\n", MQTT_PORT);
-    E2P_Read(CHANNEL_ID_ADD, (uint8_t *)ChannelId, CHANNEL_ID_LEN);
-    ESP_LOGI(TAG, "ChannelId=%s\n", ChannelId);
-    E2P_Read(USER_ID_ADD, (uint8_t *)USER_ID, USER_ID_LEN);
-    ESP_LOGI(TAG, "USER_ID=%s\n", USER_ID);
-    E2P_Read(API_KEY_ADD, (uint8_t *)ApiKey, API_KEY_LEN);
-    ESP_LOGI(TAG, "ApiKey=%s\n", ApiKey);
+    // E2P_Read(CHANNEL_ID_ADD, (uint8_t *)ChannelId, CHANNEL_ID_LEN);
+    // ESP_LOGI(TAG, "ChannelId=%s\n", ChannelId);
+    // E2P_Read(USER_ID_ADD, (uint8_t *)USER_ID, USER_ID_LEN);
+    // ESP_LOGI(TAG, "USER_ID=%s\n", USER_ID);
+    // E2P_Read(API_KEY_ADD, (uint8_t *)ApiKey, API_KEY_LEN);
+    // ESP_LOGI(TAG, "ApiKey=%s\n", ApiKey);
     E2P_Read(WIFI_SSID_ADD, (uint8_t *)wifi_data.wifi_ssid, sizeof(wifi_data.wifi_ssid));
     E2P_Read(WIFI_PASSWORD_ADD, (uint8_t *)wifi_data.wifi_pwd, sizeof(wifi_data.wifi_pwd));
     ESP_LOGI(TAG, "wifi ssid=%s,wifi password=%s\n", wifi_data.wifi_ssid, wifi_data.wifi_pwd);

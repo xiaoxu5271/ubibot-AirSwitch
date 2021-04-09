@@ -76,6 +76,8 @@
 #define L_I_reg 752100 // 实际B通道电流寄存器值
 #define L_I 0.023      //实际施加B通道电流
 
+extern bool HLW_Set_Flag;
+
 TaskHandle_t HLW_Read_Task_Hanlde;
 
 void HLW_Init(void);

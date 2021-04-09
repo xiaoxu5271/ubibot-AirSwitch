@@ -516,8 +516,7 @@ static Net_Err Http_post_fun(void)
     }
 
 end:
-    xSemaphoreGive(Cache_muxtex);
-    xSemaphoreGive(xMutex_Http_Send);
+
     free(status_buff);
     free(recv_buff);
 
@@ -530,7 +529,8 @@ end:
     {
         Databuffer[Databuffer_len - 1] = ',';
     }
-
+    xSemaphoreGive(xMutex_Http_Send);
+    xSemaphoreGive(Cache_muxtex);
     return ret;
 }
 

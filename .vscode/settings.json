@@ -16,7 +16,8 @@
                 "user_app.h": "c",
                 "switch.h": "c",
                 "led.h": "c",
-                "json_parse.h": "c"
+                "json_parse.h": "c",
+                "random": "c"
         },
         "idf.flashType": "UART",
 }

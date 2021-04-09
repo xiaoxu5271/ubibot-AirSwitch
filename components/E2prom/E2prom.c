@@ -210,11 +210,13 @@ esp_err_t E2P_WriteOneByte(uint16_t reg_addr, uint8_t dat)
 
         if (memcmp(check_temp, data_buff, 2) == 0)
         {
+            ESP_LOGI(TAG, "data_buff[0]=%d,data_buff[1]=%d", data_buff[0], data_buff[1]);
             break;
         }
         else
         {
             ESP_LOGE(TAG, "E2P_WriteOneByte err!!!");
+            ret = ESP_FAIL;
         }
     }
 
@@ -254,7 +256,7 @@ uint8_t E2P_ReadOneByte(uint16_t reg_addr)
     if (ret == false)
     {
         ESP_LOGE(TAG, "%d", __LINE__);
-        E2prom_empty_all(false);
+        E2prom_empty_all(true);
         ESP_LOGI(TAG, "%d", __LINE__);
         esp_restart();
     }
@@ -314,7 +316,7 @@ void E2P_WriteLenByte(uint16_t WriteAddr, uint32_t DataToWrite, uint8_t Len)
     if (ret == false)
     {
         ESP_LOGE(TAG, "%d", __LINE__);
-        E2prom_empty_all(false);
+        E2prom_empty_all(true);
         ESP_LOGI(TAG, "%d", __LINE__);
         esp_restart();
     }
@@ -367,7 +369,7 @@ uint32_t E2P_ReadLenByte(uint16_t ReadAddr, uint8_t Len)
     if (ret == false)
     {
         ESP_LOGE(TAG, "%d", __LINE__);
-        E2prom_empty_all(false);
+        E2prom_empty_all(true);
         ESP_LOGI(TAG, "%d", __LINE__);
         esp_restart();
     }
@@ -412,7 +414,7 @@ void E2P_Read(uint16_t ReadAddr, uint8_t *pBuffer, uint16_t NumToRead)
     if (ret == false)
     {
         ESP_LOGE(TAG, "%d", __LINE__);
-        E2prom_empty_all(false);
+        E2prom_empty_all(true);
         ESP_LOGI(TAG, "%d", __LINE__);
         esp_restart();
     }
@@ -513,8 +515,8 @@ void E2prom_empty_all(bool flag)
 
     if (flag)
     {
-        E2P_Empty(FN_SET_FLAG_ADD, WEB_PORT_ADD);
-        E2P_Empty(FN_SW_ON_ADD, E2P_USAGED);
+        E2P_Empty(FN_SET_FLAG_ADD, E2P_SIZE);
+        // E2P_Empty(FN_SW_ON_ADD, E2P_USAGED);
     }
     else
     {
