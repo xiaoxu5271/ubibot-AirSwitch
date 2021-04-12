@@ -81,5 +81,6 @@ extern bool HLW_Set_Flag;
 TaskHandle_t HLW_Read_Task_Hanlde;
 
 void HLW_Init(void);
+void Read_HLW8112_State(void);
 
 #endif

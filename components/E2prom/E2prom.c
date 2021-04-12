@@ -76,7 +76,7 @@ esp_err_t AT24CXX_ReadOneByte(uint16_t reg_addr, uint8_t *data)
     i2c_master_write_byte(cmd, (reg_addr % 256), ACK_CHECK_EN);
 
     i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, DEV_ADD + 1, ACK_CHECK_EN);
+    i2c_master_write_byte(cmd, (DEV_ADD + ((reg_addr / 256) << 1)) + 1, ACK_CHECK_EN);
 
     i2c_master_read_byte(cmd, data, NACK_VAL); //只读1 byte 不需要应答
 
@@ -210,7 +210,8 @@ esp_err_t E2P_WriteOneByte(uint16_t reg_addr, uint8_t dat)
 
         if (memcmp(check_temp, data_buff, 2) == 0)
         {
-            ESP_LOGI(TAG, "data_buff[0]=%d,data_buff[1]=%d", data_buff[0], data_buff[1]);
+            // ESP_LOGI(TAG, "reg_addr:%d,data_buff[0]=%d,data_buff[1]=%d", reg_addr, data_buff[0], data_buff[1]);
+            // ESP_LOGI(TAG, "check_temp[0]=%d,check_temp[1]=%d", check_temp[0], check_temp[1]);
             break;
         }
         else
@@ -238,6 +239,7 @@ uint8_t E2P_ReadOneByte(uint16_t reg_addr)
         else
         {
             AT24_Read(reg_addr, temp_buf, 2);
+            // ESP_LOGI(TAG, "reg_addr:%d,temp_buf[0]=%d,temp_buf[1]=%d", reg_addr, temp_buf[0], temp_buf[1]);
         }
 
         if (temp_buf[1] == Get_Crc8(temp_buf, 1))
@@ -249,7 +251,7 @@ uint8_t E2P_ReadOneByte(uint16_t reg_addr)
         else
         {
             ret = false;
-            ESP_LOGE(TAG, "temp_buf:%d,%d", temp_buf[0], temp_buf[1]);
+            ESP_LOGE(TAG, "temp_buf:%d,%d,CRC:%d ", temp_buf[0], temp_buf[1], Get_Crc8(temp_buf, 1));
             ESP_LOGE(TAG, "E2P_ReadOneByte err");
         }
     }
@@ -500,7 +502,7 @@ esp_err_t E2P_Empty(uint16_t start_add, uint16_t end_add)
     {
         while (len)
         {
-            AT24CXX_WriteOneByte(len - 1, 0);
+            AT24CXX_WriteOneByte(start_add++, 0);
             len--;
         }
     }
@@ -515,7 +517,7 @@ void E2prom_empty_all(bool flag)
 
     if (flag)
     {
-        E2P_Empty(FN_SET_FLAG_ADD, E2P_SIZE);
+        E2P_Empty(FN_SET_FLAG_ADD, E2P_SIZE - 1);
         // E2P_Empty(FN_SW_ON_ADD, E2P_USAGED);
     }
     else

@@ -12,6 +12,7 @@
 #include "Led.h"
 #include "E2prom.h"
 #include "Smartconfig.h"
+#include "HLW8112.h"
 
 #include "Switch.h"
 
@@ -232,6 +233,7 @@ void HALL_Task(void *arg)
 
             case HALL_S:
                 sw_sta = gpio_get_level(HALL_S);
+
                 //齿轮复位状态，代表外部手动操作合闸
                 if (c_type_flag == false)
                 {

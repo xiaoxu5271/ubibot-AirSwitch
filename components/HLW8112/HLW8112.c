@@ -491,7 +491,7 @@ void Set_OIB(float Set_I)
             HLW8112_SPI_WriteReg(REG_INT_ADDR);
             HLW8112_SPI_WriteByte(0x32);
             // HLW8112_SPI_WriteByte(0xc9);
-            HLW8112_SPI_WriteByte(0xF3); //
+            HLW8112_SPI_WriteByte(0xF9); //
             gpio_set_level(HLW_SCSN, 1);
 
             //设置IE寄存器, IE
@@ -985,10 +985,12 @@ void Read_HLW8112_Angle(void)
 =====================================================*/
 void Read_HLW8112_State(void)
 {
+    xSemaphoreTake(HLW_muxtex, -1);
     //读取过压状态位,必须读取RIF状态，才能进入下一次中断
     Read_HLW8112_RegData(REG_IE_ADDR, 2);
     U16_IFData = Read_HLW8112_RegData(REG_IF_ADDR, 2);
     U16_RIFData = Read_HLW8112_RegData(REG_RIF_ADDR, 2);
+    xSemaphoreGive(HLW_muxtex);
 }
 
 /*=====================================================
@@ -1001,6 +1003,7 @@ void Read_HLW8112_State(void)
 =====================================================*/
 void HLW_Read_Task(void *arg)
 {
+    BaseType_t Read_Flag;
     while (1)
     {
         vTaskDelay(500 / portTICK_PERIOD_MS);
@@ -1089,52 +1092,67 @@ void HLW_Read_Task(void *arg)
 
             xSemaphoreGive(HLW_muxtex);
 
-            //过流保护
-            if (fn_oc != 0 && (F_AC_I * 1000) > fn_oc)
+            Read_Flag = ulTaskNotifyTake(pdFALSE, 100 / portTICK_RATE_MS);
+
+            if (sw_sta)
             {
-                if (Binary_energy != NULL)
+                //过流保护
+                if (fn_oc != 0 && (F_AC_I * 1000) > fn_oc)
                 {
-                    xTaskNotifyGive(Binary_energy);
+                    if (Binary_energy != NULL)
+                    {
+                        xTaskNotifyGive(Binary_energy);
+                    }
+                    snprintf(C_TYPE, sizeof(C_TYPE), "protection");
+                    snprintf(WARN_CODE, sizeof(WARN_CODE), "warn_over_i");
+                    Switch_Relay(0);
                 }
-                snprintf(C_TYPE, sizeof(C_TYPE), "protection");
-                snprintf(WARN_CODE, sizeof(WARN_CODE), "warn_over_i");
-                Switch_Relay(0);
-            }
-            // 过压保护
-            if (fn_ov != 0 && F_AC_V > fn_oc)
-            {
-                if (Binary_energy != NULL)
+                // 过压保护
+                if (fn_ov != 0 && F_AC_V > fn_oc)
                 {
-                    xTaskNotifyGive(Binary_energy);
+                    if (Binary_energy != NULL)
+                    {
+                        xTaskNotifyGive(Binary_energy);
+                    }
+                    snprintf(C_TYPE, sizeof(C_TYPE), "protection");
+                    snprintf(WARN_CODE, sizeof(WARN_CODE), "warn_over_v");
+                    Switch_Relay(0);
                 }
-                snprintf(C_TYPE, sizeof(C_TYPE), "protection");
-                snprintf(WARN_CODE, sizeof(WARN_CODE), "warn_over_v");
-                Switch_Relay(0);
-            }
-            // 欠压保护
-            if (fn_sag != 0 && F_AC_V < fn_sag)
-            {
-                if (Binary_energy != NULL)
+                // 欠压保护
+                if (fn_sag != 0 && F_AC_V < fn_sag)
                 {
-                    xTaskNotifyGive(Binary_energy);
+                    if (Binary_energy != NULL)
+                    {
+                        xTaskNotifyGive(Binary_energy);
+                    }
+                    snprintf(C_TYPE, sizeof(C_TYPE), "protection");
+                    snprintf(WARN_CODE, sizeof(WARN_CODE), "warn_sag_v");
+                    Switch_Relay(0);
                 }
-                snprintf(C_TYPE, sizeof(C_TYPE), "protection");
-                snprintf(WARN_CODE, sizeof(WARN_CODE), "warn_sag_v");
-                Switch_Relay(0);
-            }
-            // 过载保护
-            if (fn_op != 0 && F_AC_P > fn_op)
-            {
-                if (Binary_energy != NULL)
+                // 过载保护
+                if (fn_op != 0 && F_AC_P > fn_op)
                 {
-                    xTaskNotifyGive(Binary_energy);
+                    if (Binary_energy != NULL)
+                    {
+                        xTaskNotifyGive(Binary_energy);
+                    }
+                    snprintf(C_TYPE, sizeof(C_TYPE), "protection");
+                    snprintf(WARN_CODE, sizeof(WARN_CODE), "warn_sag_P");
+                    Switch_Relay(0);
                 }
-                snprintf(C_TYPE, sizeof(C_TYPE), "protection");
-                snprintf(WARN_CODE, sizeof(WARN_CODE), "warn_sag_P");
-                Switch_Relay(0);
             }
 
-            vTaskDelay(100 / portTICK_RATE_MS);
+            // Read_HLW8112_State();
+            if (Read_Flag != 0)
+            {
+                ESP_LOGI(TAG, "Read_Flag:%d", Read_Flag);
+                if (Binary_energy != NULL)
+                {
+                    xTaskNotifyGive(Binary_energy);
+                }
+            }
+            // ESP_LOGI(TAG, "F_AC_I_B:%f", F_AC_I_B);
+            // vTaskDelay(100 / portTICK_RATE_MS);
         }
     }
 }
@@ -1154,31 +1172,26 @@ void HLW_INT_Task(void *arg)
         if (xQueueReceive(HLW_INT_evt_queue, &io_num, portMAX_DELAY))
         {
             // ESP_LOGI(TAG, "GPIO[%d] intr, val: %d\n", io_num, gpio_get_level(io_num));
-
             switch (io_num)
             {
             case HLW_INT2:
-
-                snprintf(C_TYPE, sizeof(C_TYPE), "protection");
-                snprintf(WARN_CODE, sizeof(WARN_CODE), "warn_leakage");
-
-                Switch_Relay(0);
-
-                xSemaphoreTake(HLW_muxtex, -1);
+                if (sw_sta)
+                {
+                    snprintf(C_TYPE, sizeof(C_TYPE), "protection");
+                    snprintf(WARN_CODE, sizeof(WARN_CODE), "warn_leakage");
+                    Switch_Relay(0);
+                    if (HLW_Read_Task_Hanlde != NULL)
+                    {
+                        xTaskNotifyGive(HLW_Read_Task_Hanlde);
+                    }
+                    ESP_LOGI(TAG, "HLW_INT2");
+                }
                 Read_HLW8112_State();
-                xSemaphoreGive(HLW_muxtex);
 
-                // if (Binary_energy != NULL)
-                // {
-                //     xTaskNotifyGive(Binary_energy);
-                // }
-                ESP_LOGI(TAG, "HLW_INT2");
                 break;
 
             case HLW_INT1:
-                xSemaphoreTake(HLW_muxtex, -1);
                 Read_HLW8112_State();
-                xSemaphoreGive(HLW_muxtex);
                 // ESP_LOGI(TAG, "HLW_INT1");
                 break;
 
@@ -1224,21 +1237,22 @@ void HLW_Energy_Task(void *arg)
                 cJSON_AddItemToObject(pJsonRoot, filed_buff, cJSON_CreateNumber(F_AC_P));
                 snprintf(filed_buff, 9, "field%d", f_sw_lc);
                 cJSON_AddItemToObject(pJsonRoot, filed_buff, cJSON_CreateNumber(F_AC_I_B));
-            }
-            if (fn_ang)
-            {
-                snprintf(filed_buff, 9, "field%d", f_sw_ang);
-                cJSON_AddItemToObject(pJsonRoot, filed_buff, cJSON_CreateNumber(F_Angle));
-            }
-            if (fn_freq)
-            {
-                snprintf(filed_buff, 9, "field%d", f_sw_freq);
-                cJSON_AddItemToObject(pJsonRoot, filed_buff, cJSON_CreateNumber(F_AC_LINE_Freq));
-            }
-            if (fn_pf)
-            {
-                snprintf(filed_buff, 9, "field%d", f_sw_pf);
-                cJSON_AddItemToObject(pJsonRoot, filed_buff, cJSON_CreateNumber(F_AC_PF));
+
+                if (fn_ang)
+                {
+                    snprintf(filed_buff, 9, "field%d", f_sw_ang);
+                    cJSON_AddItemToObject(pJsonRoot, filed_buff, cJSON_CreateNumber(F_Angle));
+                }
+                if (fn_freq)
+                {
+                    snprintf(filed_buff, 9, "field%d", f_sw_freq);
+                    cJSON_AddItemToObject(pJsonRoot, filed_buff, cJSON_CreateNumber(F_AC_LINE_Freq));
+                }
+                if (fn_pf)
+                {
+                    snprintf(filed_buff, 9, "field%d", f_sw_pf);
+                    cJSON_AddItemToObject(pJsonRoot, filed_buff, cJSON_CreateNumber(F_AC_PF));
+                }
             }
 
             OutBuffer = cJSON_PrintUnformatted(pJsonRoot); //cJSON_Print(Root)

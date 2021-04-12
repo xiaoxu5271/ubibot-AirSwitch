@@ -221,7 +221,7 @@ static short Parse_metadata(char *ptrptr)
         if ((uint32_t)pSubSubSub->valueint != fn_pf)
         {
             fn_pf = (uint32_t)pSubSubSub->valueint;
-            E2P_WriteLenByte(FN_PF_ADD, fn_pf, 4);
+            E2P_WriteOneByte(FN_PF_ADD, fn_pf);
             ESP_LOGI(TAG, "fn_pf = %d\n", fn_pf);
         }
     }

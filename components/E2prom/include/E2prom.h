@@ -47,16 +47,19 @@
 #define CHANNEL_ID_ADD WEB_HOST_ADD + WEB_HOST_LEN + 1       //chanel id
 #define USER_ID_ADD CHANNEL_ID_ADD + CHANNEL_ID_LEN + 1      //user id
 #define API_KEY_ADD USER_ID_ADD + USER_ID_LEN + 1            //user id
+#define WEB_PORT_ADD API_KEY_ADD + API_KEY_LEN + 1           //web PORT
+#define MQTT_HOST_ADD WEB_PORT_ADD + 5 + 1                   //MQTT HOST
+#define MQTT_PORT_ADD MQTT_HOST_ADD + WEB_HOST_LEN + 1       //MQTT PORT
 
 //metadata
-#define FN_SET_FLAG_ADD API_KEY_ADD + API_KEY_LEN + 1 //metadata setted flag u8
-#define FN_DP_ADD FN_SET_FLAG_ADD + 1 + 1             //数据发送频率uint32_t
-#define FN_ANG_ADD FN_DP_ADD + 4 + 1                  //4
-#define FN_FREQ_ADD FN_ANG_ADD + 4 + 1                //4
-#define FN_PF_ADD FN_FREQ_ADD + 4 + 1                 //4
-#define FN_LC_ADD FN_PF_ADD + 4 + 1                   //4
-#define FN_OC_ADD FN_LC_ADD + 4 + 1                   //485温湿度探头uint32_t
-#define FN_OV_ADD FN_OC_ADD + 4 + 1                   //485 土壤探头uint32_t
+#define FN_SET_FLAG_ADD MQTT_PORT_ADD + 5 + 1 //metadata setted flag u8
+#define FN_DP_ADD FN_SET_FLAG_ADD + 1 + 1     //数据发送频率uint32_t
+#define FN_ANG_ADD FN_DP_ADD + 4 + 1          //4
+#define FN_FREQ_ADD FN_ANG_ADD + 4 + 1        //4
+#define FN_PF_ADD FN_FREQ_ADD + 4 + 1         //4
+#define FN_LC_ADD FN_PF_ADD + 4 + 1           //4
+#define FN_OC_ADD FN_LC_ADD + 4 + 1           //485温湿度探头uint32_t
+#define FN_OV_ADD FN_OC_ADD + 4 + 1           //485 土壤探头uint32_t
 #define FN_SAG_ADD FN_OV_ADD + 4 + 1
 #define FN_OP_ADD FN_SAG_ADD + 4 + 1  //18b20uint32_t
 #define FN_SW_E_ADD FN_OP_ADD + 4 + 1 //电能信息：电压/电流/功率uint32_t
@@ -83,11 +86,7 @@
 #define WIFI_SSID_ADD LAST_SWITCH_ADD + 1 + 1    //32
 #define WIFI_PASSWORD_ADD WIFI_SSID_ADD + 32 + 1 //64
 
-#define WEB_PORT_ADD WIFI_PASSWORD_ADD + 64 + 1        //web PORT
-#define MQTT_HOST_ADD WEB_PORT_ADD + 5 + 1             //MQTT HOST
-#define MQTT_PORT_ADD MQTT_HOST_ADD + WEB_HOST_LEN + 1 //MQTT PORT
-
-#define E2P_USAGED MQTT_PORT_ADD + 5 + 1
+#define E2P_USAGED WIFI_PASSWORD_ADD + 64 + 1
 
 void E2prom_Init(void);
 esp_err_t E2P_WriteOneByte(uint16_t reg_addr, uint8_t dat);

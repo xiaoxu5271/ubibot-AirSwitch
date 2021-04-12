@@ -55,7 +55,7 @@ void short_pressed_cb(uint8_t key_num, uint8_t *short_pressed_counts)
         case 1:
             ESP_LOGI(TAG, "BOARD_BUTTON first press!!!\n");
             // Task_key_num = 1;
-            Switch_Relay(-1);
+            // Switch_Relay(-1);
             // vTaskNotifyGiveFromISR(User_Key_handle, NULL);
             break;
         case 2:
