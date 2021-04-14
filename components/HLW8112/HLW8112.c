@@ -105,7 +105,7 @@ float F_IF_RegData;   //IF寄存器值
 uint8_t PGAIA = 0; //A电流通道增益 ，0,1,2,3,4 --> 1,2,4,8,16
 double K_A_I;      //A通道电流系数，计算后
 
-bool HLW_Set_Flag; //flase 则需重新设置
+bool HLW_Set_Flag = false; //flase 则需重新设置
 
 static xQueueHandle HLW_INT_evt_queue = NULL;
 
@@ -267,7 +267,7 @@ void Write_HLW8112_RegData(unsigned char ADDR_Reg, unsigned char u8_reg_length, 
  * Return   : u1(True or False)
  * Record   : 2018/05/09
 =====================================================*/
-unsigned long Read_HLW8112_RegData(unsigned char ADDR_Reg, unsigned char u8_reg_length)
+uint32_t Read_HLW8112_RegData(unsigned char ADDR_Reg, unsigned char u8_reg_length)
 {
     unsigned char i;
     union LongData u32_t_data1;
@@ -345,7 +345,7 @@ unsigned char Judge_CheckSum_HLW8112_Calfactor(void)
     {
         d = 0;
         HLW_FLAG = false;
-        // printf("系数寄存器校验fail\r\n");
+        ESP_LOGE(TAG, "系数寄存器校验fail\r\n");
     }
     xSemaphoreGive(HLW_muxtex);
 
@@ -462,18 +462,18 @@ void Set_V_Zero(void)
  * Record   : 2019/03/18
 =====================================================*/
 
-void Set_OIB(float Set_I)
+void Set_OIB(uint32_t Set_I)
 {
+    HLW8112_WriteREG_EN(); //打开写8112 Reg
     if (Set_I != 0)
     {
-        Set_I = Set_I / 1000;
+        double Set_I_ma = Set_I / 1000.0;
 
         uint32_t Set_Reg;
         // Set_Reg = (uint32_t)(L_I_reg / L_I * Set_I * 1.414) >> 7;
-        Set_Reg = (uint32_t)(0x800000 * K_B_I * Set_I * 1.414 * 1000 / U16_RMSIBC_RegData) >> 7;
-        ESP_LOGI(TAG, "Set_OIB Set_Reg:,%d,%08X,U16_RMSIBC_RegData:%d", Set_Reg, Set_Reg, U16_RMSIBC_RegData);
+        Set_Reg = (uint32_t)(0x800000 * K_B_I * Set_I_ma * 1.414 * 1000 / U16_RMSIBC_RegData) >> 7;
+        ESP_LOGI(TAG, "Set_OIB,Set_I_ma=%f Set_Reg:,%d,%08X,U16_RMSIBC_RegData:%d", Set_I_ma, Set_Reg, Set_Reg, U16_RMSIBC_RegData);
 
-        HLW8112_WriteREG_EN(); //打开写8112 Reg
         gpio_set_level(HLW_SCSN, 0);
         HLW8112_SPI_WriteReg(REG_OIBLVL_ADDR);
         HLW8112_SPI_WriteByte(Set_Reg >> 8);
@@ -486,27 +486,26 @@ void Set_OIB(float Set_I)
         }
         else
         {
+            //设置IE寄存器, IE
+            // a = Read_HLW8112_RegData(REG_IE_ADDR, 2);
+            gpio_set_level(HLW_SCSN, 0);
+            HLW8112_SPI_WriteReg(REG_IE_ADDR);
+            //仅开启B通道过流中断 ,4: 电压过零
+            HLW8112_SPI_WriteByte(0x01); //41
+            HLW8112_SPI_WriteByte(0);
+            gpio_set_level(HLW_SCSN, 1);
+
+            ESP_LOGI(TAG, "%d,TempData:%08X", __LINE__, Read_HLW8112_RegData(REG_IE_ADDR, 2));
+
             //设置INT寄存器,INT2 开启B通道过流信号指示输出，INT1 电压过零
             gpio_set_level(HLW_SCSN, 0);
             HLW8112_SPI_WriteReg(REG_INT_ADDR);
             HLW8112_SPI_WriteByte(0x32);
             // HLW8112_SPI_WriteByte(0xc9);
-            HLW8112_SPI_WriteByte(0xF9); //
+            HLW8112_SPI_WriteByte(0xf3); //
             gpio_set_level(HLW_SCSN, 1);
 
-            //设置IE寄存器, IE
-            // a = Read_HLW8112_RegData(REG_IE_ADDR, 2);
-            gpio_set_level(HLW_SCSN, 0);
-            HLW8112_SPI_WriteReg(REG_IE_ADDR);
-            // HLW8112_SPI_WriteByte((a >> 8) | 0x01);
-            // HLW8112_SPI_WriteByte(a & 0xff);
-
-            //仅开启B通道过流中断
-            HLW8112_SPI_WriteByte(0x01);
-            HLW8112_SPI_WriteByte(0);
-            gpio_set_level(HLW_SCSN, 1);
-
-            U16_TempData = Read_HLW8112_RegData(REG_IE_ADDR, 2);
+            ESP_LOGI(TAG, "%d,TempData:%08X", __LINE__, Read_HLW8112_RegData(REG_INT_ADDR, 2));
         }
     }
     else
@@ -638,12 +637,18 @@ void Check_WriteReg_Success(void)
  * Return   : none
  * Record   : 2018/05/09
 =====================================================*/
-void Read_HLW8112_PA_I(void)
+bool Read_HLW8112_PA_I(void)
 {
     float a;
     //计算公式,U16_AC_I = (U32_RMSIA_RegData * U16_RMSIAC_RegData)/(电流系数* 2^23）
 
     U32_RMSIA_RegData = Read_HLW8112_RegData(REG_RMSIA_ADDR, 3);
+
+    if (U32_RMSIA_RegData == 0)
+    {
+        ESP_LOGE(TAG, "%d,read err", __LINE__);
+        return false;
+    }
 
     if ((U32_RMSIA_RegData & 0x800000) == 0x800000)
     {
@@ -654,11 +659,16 @@ void Read_HLW8112_PA_I(void)
         a = (float)U32_RMSIA_RegData;
         a = a * U16_RMSIAC_RegData;
         a = a / 0x800000; //电流计算出来的浮点数单位是mA,比如5003.12
-        a = a / K_A_I;    // 1 = 电流系数
+        a = a / K_A_I;    // 电流系数
         a = a / 1000;     //a= 5003ma,a/1000 = 5.003A,单位转换成A
         // a = a * D_CAL_A_I; //D_CAL_A_I是校正系数，默认是1
         F_AC_I = a;
+        if (a <= 0.02)
+        {
+            F_AC_I = 0;
+        }
     }
+    return true;
 }
 
 /*=====================================================
@@ -669,13 +679,18 @@ void Read_HLW8112_PA_I(void)
  * Return   : none
  * Record   : 2019/03/28
 =====================================================*/
-void Read_HLW8112_PB_I(void)
+bool Read_HLW8112_PB_I(void)
 {
     float a;
 
     //计算,U16_AC_I_B = (U32_RMSIB_RegData * U16_RMSIBC_RegData)/2^23
     U32_RMSIB_RegData = Read_HLW8112_RegData(REG_RMSIB_ADDR, 3);
-    // ESP_LOGI(TAG, "U32_RMSIB_RegData:%ld", U32_RMSIB_RegData);
+    if (U32_RMSIB_RegData == 0)
+    {
+        ESP_LOGE(TAG, "%d,read err", __LINE__);
+        return false;
+    }
+
     if ((U32_RMSIB_RegData & 0x800000) == 0x800000)
     {
         F_AC_I_B = 0;
@@ -690,6 +705,7 @@ void Read_HLW8112_PB_I(void)
         // a = a * D_CAL_B_I; //D_CAL_B_I是校正系数，默认是1
         F_AC_I_B = a;
     }
+    return true;
 }
 
 /*=====================================================
@@ -700,11 +716,16 @@ void Read_HLW8112_PB_I(void)
  * Return   : none
  * Record   : 2018/05/09
 =====================================================*/
-void Read_HLW8112_U(void)
+bool Read_HLW8112_U(void)
 {
     float a;
     //读取电压寄存器值
     U32_RMSU_RegData = Read_HLW8112_RegData(REG_RMSU_ADDR, 3);
+    if (U32_RMSU_RegData == 0)
+    {
+        ESP_LOGE(TAG, "%d,read err", __LINE__);
+        return false;
+    }
 
     //计算:U16_AC_V = (U32_RMSU_RegData * U16_RMSUC_RegData)/2^23
 
@@ -722,6 +743,7 @@ void Read_HLW8112_U(void)
         a = a * D_CAL_U; //D_CAL_U是校正系数，默认是1
         F_AC_V = a;
     }
+    return true;
 }
 
 /*=====================================================
@@ -756,7 +778,8 @@ void Read_HLW8112_PA(void)
     a = a / K_A_I;     // 1 = 电流系数
     a = a / K_A_U;     // 1 = 电压系数
     a = a * D_CAL_A_P; //D_CAL_A_P是校正系数，默认是1
-    F_AC_P = a;        //单位为W,比如算出来5000.123，表示5000.123W
+
+    F_AC_P = a; //单位为W,比如算出来5000.123，表示5000.123W
 }
 /*=====================================================
  * Function : void Read_HLW8112_PB(void)
@@ -987,7 +1010,6 @@ void Read_HLW8112_State(void)
 {
     xSemaphoreTake(HLW_muxtex, -1);
     //读取过压状态位,必须读取RIF状态，才能进入下一次中断
-    Read_HLW8112_RegData(REG_IE_ADDR, 2);
     U16_IFData = Read_HLW8112_RegData(REG_IF_ADDR, 2);
     U16_RIFData = Read_HLW8112_RegData(REG_RIF_ADDR, 2);
     xSemaphoreGive(HLW_muxtex);
@@ -1004,14 +1026,22 @@ void Read_HLW8112_State(void)
 void HLW_Read_Task(void *arg)
 {
     BaseType_t Read_Flag;
+    uint8_t fail_num = 0;
     while (1)
     {
-        vTaskDelay(500 / portTICK_PERIOD_MS);
-
+        HLW_Set_Flag = false;
         if (Judge_CheckSum_HLW8112_Calfactor() == false)
         {
+            vTaskDelay(1000 / portTICK_PERIOD_MS);
             continue;
         }
+        //复位重启
+        gpio_set_level(HLW_SCSN, 0);
+        HLW8112_SPI_WriteByte(0xea);
+        HLW8112_SPI_WriteByte(0x96);
+        gpio_set_level(HLW_SCSN, 1);
+        vTaskDelay(500 / portTICK_PERIOD_MS);
+
         PGAIA = (PGAIA <= 4) ? PGAIA : 1;
         K_A_I = 3 / (16 / pow(2.0, (double)PGAIA));
         ESP_LOGI(TAG, "K_A_I=%f", K_A_I);
@@ -1025,11 +1055,11 @@ void HLW_Read_Task(void *arg)
         gpio_set_level(HLW_SCLK, 0);
         delay_us(2);
         gpio_set_level(HLW_SDI, 0);
-        HLW8112_WriteREG_EN(); //打开写8112 Reg
-                               // ea + 5a 电流通道A设置命令，指定当前用于计算视在功率、功率因数、相角、
-                               //瞬时有功功率、瞬时视在功率和有功功率过载的信号指示 的通道为通道A
-                               // ea + a5 电流通道A设置命令，指定当前用于计算视在功率、功率因数、相角、
-                               //瞬时有功功率、瞬时视在功率和有功功率过载的信号指示 的通道为通道A
+        //打开写8112 Reg
+        HLW8112_WriteREG_EN();
+
+        // ea + a5 电流通道A设置命令，指定当前用于计算视在功率、功率因数、相角、
+        //瞬时有功功率、瞬时视在功率和有功功率过载的信号指示 的通道为通道A
         gpio_set_level(HLW_SCSN, 0);
         HLW8112_SPI_WriteByte(0xea);
         HLW8112_SPI_WriteByte(0x5a);
@@ -1055,30 +1085,43 @@ void HLW_Read_Task(void *arg)
         //3.4HZ(300ms) 6.8HZ(150ms) 13.65HZ(75ms) 27.3HZ(37.5ms)
         gpio_set_level(HLW_SCSN, 0);
         HLW8112_SPI_WriteReg(REG_EMUCON2_ADDR);
-        HLW8112_SPI_WriteByte(0x0b); //A电量寄存器读后清零
+        HLW8112_SPI_WriteByte(0x03); //A电量寄存器读后清零
         // HLW8112_SPI_WriteByte(0x0f); //电量寄存器读后不清零
         HLW8112_SPI_WriteByte(0xff);
         gpio_set_level(HLW_SCSN, 1);
 
         //关闭所有中断
-        gpio_set_level(HLW_SCSN, 0);
-        HLW8112_SPI_WriteReg(REG_IE_ADDR);
-        HLW8112_SPI_WriteByte(0x00);
-        HLW8112_SPI_WriteByte(0x00);
-        gpio_set_level(HLW_SCSN, 1);
+        // gpio_set_level(HLW_SCSN, 0);
+        // HLW8112_SPI_WriteReg(REG_IE_ADDR);
+        // HLW8112_SPI_WriteByte(0x00);
+        // HLW8112_SPI_WriteByte(0x00);
+        // gpio_set_level(HLW_SCSN, 1);
 
         // Set_V_Zero(); //设置INT1
         Set_OIB(fn_lc); //B通道过流
 
         // Set_OVLVL();          //设置INT2
         //  Set_Leakage();        //设置INT2，打开B通道B较器
-        Check_WriteReg_Success();
+        // Check_WriteReg_Success();
 
         HLW_Set_Flag = true;
         xSemaphoreGive(HLW_muxtex);
 
-        while (Judge_CheckSum_HLW8112_Calfactor() && HLW_Set_Flag)
+        while (HLW_Set_Flag)
         {
+            if (Judge_CheckSum_HLW8112_Calfactor() == false)
+            {
+                fail_num++;
+                if (fail_num > 10)
+                {
+                    break;
+                }
+                vTaskDelay(100 / portTICK_RATE_MS);
+                continue;
+            }
+
+            Read_Flag = ulTaskNotifyTake(pdFALSE, 100 / portTICK_RATE_MS);
+
             xSemaphoreTake(HLW_muxtex, -1);
 
             Read_HLW8112_PA_I();
@@ -1091,8 +1134,6 @@ void HLW_Read_Task(void *arg)
             Read_HLW8112_PF();
 
             xSemaphoreGive(HLW_muxtex);
-
-            Read_Flag = ulTaskNotifyTake(pdFALSE, 100 / portTICK_RATE_MS);
 
             if (sw_sta)
             {
@@ -1137,22 +1178,23 @@ void HLW_Read_Task(void *arg)
                         xTaskNotifyGive(Binary_energy);
                     }
                     snprintf(C_TYPE, sizeof(C_TYPE), "protection");
-                    snprintf(WARN_CODE, sizeof(WARN_CODE), "warn_sag_P");
+                    snprintf(WARN_CODE, sizeof(WARN_CODE), "warn_over_p");
                     Switch_Relay(0);
                 }
             }
 
             // Read_HLW8112_State();
-            if (Read_Flag != 0)
-            {
-                ESP_LOGI(TAG, "Read_Flag:%d", Read_Flag);
-                if (Binary_energy != NULL)
-                {
-                    xTaskNotifyGive(Binary_energy);
-                }
-            }
+            // if (Read_Flag != 0)
+            // {
+            //     Read_HLW8112_State();
+            //     ESP_LOGI(TAG, "Read_Flag:%d", Read_Flag);
+            //     if (Binary_energy != NULL)
+            //     {
+            //         xTaskNotifyGive(Binary_energy);
+            //     }
+            // }
             // ESP_LOGI(TAG, "F_AC_I_B:%f", F_AC_I_B);
-            // vTaskDelay(100 / portTICK_RATE_MS);
+            vTaskDelay(100 / portTICK_RATE_MS);
         }
     }
 }
@@ -1175,18 +1217,19 @@ void HLW_INT_Task(void *arg)
             switch (io_num)
             {
             case HLW_INT2:
-                if (sw_sta)
+                if (sw_sta && HLW_Set_Flag)
                 {
                     snprintf(C_TYPE, sizeof(C_TYPE), "protection");
                     snprintf(WARN_CODE, sizeof(WARN_CODE), "warn_leakage");
                     Switch_Relay(0);
-                    if (HLW_Read_Task_Hanlde != NULL)
-                    {
-                        xTaskNotifyGive(HLW_Read_Task_Hanlde);
-                    }
-                    ESP_LOGI(TAG, "HLW_INT2");
+                    // if (HLW_Read_Task_Hanlde != NULL)
+                    // {
+                    //     xTaskNotifyGive(HLW_Read_Task_Hanlde);
+                    // }
                 }
                 Read_HLW8112_State();
+                ESP_LOGI(TAG, "HLW_INT2");
+                // Read_HLW8112_State();
 
                 break;
 
@@ -1288,6 +1331,7 @@ void HLW_Quan_Task(void *arg)
         //电量计算,电量 = (U32_ENERGY_PA_RegData * U16_EnergyAC_RegData * HFCONST) /(K1*K2 * 2^29 * 4096)
         //HFCONST:默认值是0x1000, HFCONST/(2^29 * 4096) = 0x20000000
         F_AC_E = (float)U32_ENERGY_PA_RegData;
+        ESP_LOGI(TAG, "U32_ENERGY_PA_RegData:%lld", U32_ENERGY_PA_RegData);
         //清空寄存器累加值
         U32_ENERGY_PA_RegData = 0;
 
@@ -1296,6 +1340,7 @@ void HLW_Quan_Task(void *arg)
                                              //因为K1和K2都是1，所以a/(K1*K2) = a
         F_AC_E = F_AC_E / K_A_I;             //电流系数
         F_AC_E = F_AC_E / K_A_U;             //电压系数
+        ESP_LOGI(TAG, "F_AC_E:%f", F_AC_E);
 
         if ((xEventGroupGetBits(Net_sta_group) & TIME_CAL_BIT) == TIME_CAL_BIT)
         {

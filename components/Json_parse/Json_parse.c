@@ -1543,8 +1543,9 @@ void Read_Metadate_E2p(void)
     ESP_LOGI(TAG, "fn_oc:%d\n", fn_oc);
     ESP_LOGI(TAG, "fn_ov:%d\n", fn_ov);
     ESP_LOGI(TAG, "fn_sag:%d\n", fn_sag);
-    ESP_LOGI(TAG, "fn_sw_e:%d\n", fn_sw_e);
     ESP_LOGI(TAG, "fn_op:%d\n", fn_op);
+    ESP_LOGI(TAG, "fn_sw_e:%d\n", fn_sw_e);
+    ESP_LOGI(TAG, "fn_sw_pc:%d\n", fn_sw_pc);
     ESP_LOGI(TAG, "cg_data_led:%d\n", cg_data_led);
     ESP_LOGI(TAG, "de_sw_s:%d\n", de_sw_s);
     ESP_LOGI(TAG, "fn_sw_on:%d\n", fn_sw_on);
