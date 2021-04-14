@@ -11,7 +11,7 @@
 
 #include <esp_log.h>
 // #include "tcp_bsp.h"
-// #include "Smartconfig.h"
+#include "Smartconfig.h"
 // #include "Mqtt.h"
 // #include "w5500_driver.h"
 // #include "ota.h"
@@ -130,7 +130,17 @@ void long_pressed_cb(uint8_t key_num, uint8_t *long_pressed_counts)
     {
     case BOARD_BUTTON:
         ESP_LOGI("long_pressed_cb", "long press!!!\n");
-        ble_app_start();
+        if (Cnof_net_flag)
+        {
+            ble_app_stop();
+            start_user_wifi();
+        }
+        else
+        {
+            ble_app_start();
+            start_softap();
+        }
+
         break;
     default:
         break;

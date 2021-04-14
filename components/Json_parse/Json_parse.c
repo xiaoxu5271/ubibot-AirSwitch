@@ -889,10 +889,12 @@ esp_err_t ParseTcpUartCmd(char *pcCmdBuffer)
 {
     // char send_buf[128] = {0};
     // sprintf(send_buf, "{\"status\":0,\"code\": 0}");
+    esp_err_t ret = ESP_FAIL;
     if (NULL == pcCmdBuffer) //null
     {
         ESP_LOGE(TAG, "%d", __LINE__);
-        return ESP_FAIL;
+        ret = ESP_FAIL;
+        return ret;
     }
 
     cJSON *pJson = cJSON_Parse(pcCmdBuffer); //parse json data
@@ -900,7 +902,8 @@ esp_err_t ParseTcpUartCmd(char *pcCmdBuffer)
     {
         ESP_LOGE(TAG, "%d", __LINE__);
         cJSON_Delete(pJson); //delete pJson
-        return ESP_FAIL;
+        ret = ESP_FAIL;
+        return ret;
     }
 
     cJSON *pSub = cJSON_GetObjectItem(pJson, "Command"); //"Command"
@@ -963,10 +966,11 @@ esp_err_t ParseTcpUartCmd(char *pcCmdBuffer)
                     cJSON_Delete(pJson);
                     esp_restart(); //芯片复位 函数位于esp_system.h
 
-                    return ESP_OK;
+                    ret = ESP_OK;
                 }
                 else
                 {
+                    ret = ESP_FAIL;
                     //密码错误
                     printf("{\"status\":1,\"code\": 101}\r\n");
                 }
@@ -994,11 +998,10 @@ esp_err_t ParseTcpUartCmd(char *pcCmdBuffer)
             }
 
             Net_Switch();
-            cJSON_Delete(pJson); //delete pJson
             printf("{\"status\":0,\"code\": 0}\r\n");
             //重置网络
 
-            return 1;
+            ret = ESP_OK;
         }
         //{"command":"SetupHost","Host":"api.ubibot.io","Port":"80","MqttHost":"mqtt.ubibot.io","MqttPort":"1883"}
         else if (!strcmp((char const *)pSub->valuestring, "SetupHost")) //Command:SetupWifi
@@ -1037,7 +1040,7 @@ esp_err_t ParseTcpUartCmd(char *pcCmdBuffer)
             cJSON_Delete(pJson);
             esp_restart(); //芯片复位 函数位于esp_system.h
 
-            return ESP_OK;
+            ret = ESP_OK;
         }
 
         //{"command":"ReadProduct"}
@@ -1086,6 +1089,7 @@ esp_err_t ParseTcpUartCmd(char *pcCmdBuffer)
                 cJSON_free(json_temp);
             }
             cJSON_Delete(root); //delete pJson
+            ret = ESP_OK;
         }
         //{"command":"CheckSensors"}
         else if (!strcmp((char const *)pSub->valuestring, "CheckSensors"))
@@ -1158,32 +1162,31 @@ esp_err_t ParseTcpUartCmd(char *pcCmdBuffer)
                 cJSON_free(json_temp);
             }
             cJSON_Delete(root); //delete pJson
+            ret = ESP_OK;
         }
-        //{"command":"CheckModule"}
-        // else if (!strcmp((char const *)pSub->valuestring, "CheckModule"))
-        // {
-        //     Check_Module();
-        // }
-        //{"command":"ScanWifiList"}
+
         else if (!strcmp((char const *)pSub->valuestring, "ScanWifiList"))
         {
             Scan_Wifi();
+            ret = ESP_OK;
         }
         //{"command":"reboot"}
         else if (!strcmp((char const *)pSub->valuestring, "reboot"))
         {
             esp_restart();
+            ret = ESP_OK;
         }
         //{"command":"AllReset"}
         else if (!strcmp((char const *)pSub->valuestring, "AllReset"))
         {
             E2prom_set_defaul(false);
+            ret = ESP_OK;
         }
     }
 
     cJSON_Delete(pJson); //delete pJson
 
-    return ESP_FAIL;
+    return ret;
 }
 
 /*******************************************************************************

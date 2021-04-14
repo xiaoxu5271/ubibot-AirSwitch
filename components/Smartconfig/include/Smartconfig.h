@@ -11,6 +11,7 @@ void start_user_wifi(void);
 void stop_user_wifi(void);
 void Net_Switch(void);
 void Scan_Wifi(void);
+void start_softap(void);
 bool Check_Wifi(uint8_t *ssid, int8_t *rssi);
 
 extern uint8_t wifi_connect_sta; //wifi连接状态
@@ -41,6 +42,8 @@ EventGroupHandle_t Net_sta_group;
 #define RS485_CHECK_BIT (1 << 18)   //485空气探头检测标志
 #define DS18B20_CHECK_BIT (1 << 19) //485空气探头检测标志
 #define CSE_CHECK_BIT (1 << 20)     //电能芯片检测
+
+#define TCP_PORT 5001
 
 // static const int CONNECTED_BIT = BIT0;
 // static const int AP_STACONNECTED_BIT = BIT0;

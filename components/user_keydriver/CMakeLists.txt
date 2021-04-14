@@ -1,5 +1,5 @@
 idf_component_register(SRCS ./user_app.c ./user_key.c
                        INCLUDE_DIRS include                       # Edit following two lines to set component requirements (see docs)
                     #    REQUIRES )
-                       PRIV_REQUIRES Bluetooth Switch  Led)
+                       PRIV_REQUIRES Bluetooth Switch Smartconfig Led)
 

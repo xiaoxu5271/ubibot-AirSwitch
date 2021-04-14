@@ -110,15 +110,6 @@ void recv_data(void *pvParameters)
             show_socket_error_reason("recv_data", connect_socket);
             //服务器故障，标记重连
             g_rxtx_need_restart = true;
-
-#if TCP_SERVER_CLIENT_OPTION
-            //服务器接收异常，不用break后close socket,因为有其他client
-            //break;
-            vTaskDelete(NULL);
-#else
-            //client
-            break;
-#endif
         }
     }
     close_socket();
@@ -181,50 +172,6 @@ esp_err_t create_tcp_server(bool isCreatServer)
         return ESP_FAIL;
     }
     ESP_LOGI(TAG, "tcp connection established!");
-    return ESP_OK;
-}
-
-/*
-* 建立tcp client
-* @param[in]   void  		       :无
-* @retval      void                :无
-* @note        修改日志 
-*               Ver0.0.1:
-                    hx-zsj, 2018/08/06, 初始化版本\n 
-*               Ver0.0.12:
-                    hx-zsj, 2018/08/09, 增加close socket\n 
-*/
-esp_err_t create_tcp_client()
-{
-
-    ESP_LOGI(TAG, "will connect gateway ssid : %s port:%d",
-             TCP_SERVER_ADRESS, TCP_PORT);
-    //新建socket
-    connect_socket = socket(AF_INET, SOCK_STREAM, 0);
-    if (connect_socket < 0)
-    {
-        //打印报错信息
-        show_socket_error_reason("create client", connect_socket);
-        //新建失败后，关闭新建的socket，等待下次新建
-        close(connect_socket);
-        return ESP_FAIL;
-    }
-    //配置连接服务器信息
-    server_addr.sin_family = AF_INET;
-    server_addr.sin_port = htons(TCP_PORT);
-    server_addr.sin_addr.s_addr = inet_addr(TCP_SERVER_ADRESS);
-    ESP_LOGI(TAG, "connectting server...");
-    //连接服务器
-    if (connect(connect_socket, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0)
-    {
-        //打印报错信息
-        show_socket_error_reason("client connect", connect_socket);
-        ESP_LOGE(TAG, "connect failed!");
-        //连接失败后，关闭之前新建的socket，等待下次新建
-        close(connect_socket);
-        return ESP_FAIL;
-    }
-    ESP_LOGI(TAG, "connect success!");
     return ESP_OK;
 }
 
@@ -365,19 +312,13 @@ void my_tcp_connect_task(void *pvParameters)
         ESP_LOGI(TAG, "start tcp connected");
 
         TaskHandle_t tx_rx_task = NULL;
-#if TCP_SERVER_CLIENT_OPTION
+
         //延时3S准备建立server
         vTaskDelay(3000 / portTICK_RATE_MS);
         ESP_LOGI(TAG, "create tcp server");
         //建立server
         int socket_ret = create_tcp_server(true);
-#else
-        //延时3S准备建立clien
-        vTaskDelay(3000 / portTICK_RATE_MS);
-        ESP_LOGI(TAG, "create tcp Client");
-        //建立client
-        int socket_ret = create_tcp_client();
-#endif
+
         if (socket_ret == ESP_FAIL)
         {
             //建立失败
@@ -406,7 +347,6 @@ void my_tcp_connect_task(void *pvParameters)
 
             vTaskDelay(3000 / portTICK_RATE_MS);
 
-#if TCP_SERVER_CLIENT_OPTION
             //重新建立server，流程和上面一样
             if (g_rxtx_need_restart)
             {
@@ -426,39 +366,45 @@ void my_tcp_connect_task(void *pvParameters)
                     }
                 }
             }
-#else
-            //重新建立client，流程和上面一样
-            if (g_rxtx_need_restart)
-            {
-                vTaskDelay(3000 / portTICK_RATE_MS);
-                ESP_LOGI(TAG, "reStart create tcp client...");
-                //建立client
-                int socket_ret = create_tcp_client();
-
-                if (socket_ret == ESP_FAIL)
-                {
-                    ESP_LOGE(TAG, "reStart create tcp socket error,stop...");
-                    continue;
-                }
-                else
-                {
-                    ESP_LOGI(TAG, "reStart create tcp socket succeed...");
-                    //重新建立完成，清除标记
-                    g_rxtx_need_restart = false;
-                    //建立tcp接收数据任务
-                    if (pdPASS != xTaskCreate(&recv_data, "recv_data", 4096, NULL, 4, &tx_rx_task))
-                    {
-                        ESP_LOGE(TAG, "reStart Recv task create fail!");
-                    }
-                    else
-                    {
-                        ESP_LOGI(TAG, "reStart Recv task create succeed!");
-                    }
-                }
-            }
-#endif
         }
     }
 
     vTaskDelete(NULL);
+}
+
+static void do_retransmit(const int sock)
+{
+    int len;
+    char rx_buffer[128];
+
+    do
+    {
+        len = recv(sock, rx_buffer, sizeof(rx_buffer) - 1, 0);
+        if (len < 0)
+        {
+            ESP_LOGE(TAG, "Error occurred during receiving: errno %d", errno);
+        }
+        else if (len == 0)
+        {
+            ESP_LOGW(TAG, "Connection closed");
+        }
+        else
+        {
+            rx_buffer[len] = 0; // Null-terminate whatever is received and treat it like a string
+            ESP_LOGI(TAG, "Received %d bytes: %s", len, rx_buffer);
+
+            // send() can return less bytes than supplied length.
+            // Walk-around for robust implementation.
+            int to_write = len;
+            while (to_write > 0)
+            {
+                int written = send(sock, rx_buffer + (len - to_write), to_write, 0);
+                if (written < 0)
+                {
+                    ESP_LOGE(TAG, "Error occurred during sending: errno %d", errno);
+                }
+                to_write -= written;
+            }
+        }
+    } while (len > 0);
 }
