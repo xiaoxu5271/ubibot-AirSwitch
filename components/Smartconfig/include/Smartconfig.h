@@ -13,6 +13,7 @@ void Net_Switch(void);
 void Scan_Wifi(void);
 void start_softap(void);
 bool Check_Wifi(uint8_t *ssid, int8_t *rssi);
+int Tcp_Send(int sock, char *Send_Buff);
 
 extern uint8_t wifi_connect_sta; //wifi连接状态
 // extern uint8_t wifi_work_sta;    //wifi开启状态

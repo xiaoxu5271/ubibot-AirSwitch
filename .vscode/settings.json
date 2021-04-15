@@ -18,7 +18,8 @@
                 "led.h": "c",
                 "json_parse.h": "c",
                 "random": "c",
-                "esp_wifi.h": "c"
+                "esp_wifi.h": "c",
+                "*.ipp": "c"
         },
         "idf.flashType": "UART",
 }

@@ -62,6 +62,7 @@ void timer_heart_cb(void *arg)
         if (ble_num >= 60 * 15)
         {
             ble_app_stop();
+            start_user_wifi();
             ble_num = 0;
         }
     }
@@ -97,7 +98,7 @@ void timer_heart_cb(void *arg)
     if (fn_sw_on)
         if (min_num % fn_sw_on == 0)
         {
-            // vTaskNotifyGiveFromISR(Sw_on_Task_Handle, NULL);
+            vTaskNotifyGiveFromISR(Sw_on_Task_Handle, NULL);
         }
 }
 
@@ -543,6 +544,12 @@ void send_data_task(void *arg)
         ulTaskNotifyTake(pdTRUE, -1);
 
         Create_NET_Json();
+        if (Databuffer_len == 0)
+        {
+            ESP_LOGI(TAG, "%d,No Data", __LINE__);
+            continue;
+        }
+
         while ((ret = Http_post_fun()) != NET_OK)
         {
             if (ret == NET_DIS)
@@ -641,8 +648,8 @@ void Start_Active(void)
 
 void initialise_http(void)
 {
-    xTaskCreate(send_heart_task, "send_heart_task", 4096, NULL, 5, &Binary_Heart_Send);
-    xTaskCreate(send_data_task, "send_data_task", 4096, NULL, 6, &Binary_dp);
+    xTaskCreate(send_heart_task, "send_heart_task", 4096, NULL, 7, &Binary_Heart_Send);
+    xTaskCreate(send_data_task, "send_data_task", 4096, NULL, 7, &Binary_dp);
     esp_err_t err = esp_timer_create(&timer_heart_arg, &timer_heart_handle);
     err = esp_timer_start_periodic(timer_heart_handle, 1000000); //创建定时器，单位us，定时1s
     if (err != ESP_OK)

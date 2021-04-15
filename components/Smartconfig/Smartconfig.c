@@ -37,8 +37,10 @@
 uint8_t start_AP = 0;
 uint16_t Net_ErrCode = 0;
 bool scan_flag = false;
+char AP_SSID[15] = {0};
 
-static void tcp_server_task(void *pvParameters);
+static void
+tcp_server_task(void *pvParameters);
 
 void timer_wifi_cb(void *arg);
 esp_timer_handle_t timer_wifi_handle = NULL; //定时器句柄
@@ -116,6 +118,7 @@ static void event_handler(void *arg, esp_event_base_t event_base,
 void init_wifi(void) //
 {
     start_AP = 0;
+    char temp[6] = {0};
     // tcpip_adapter_init();
     // Net_sta_group = xEventGroupCreate();
     ESP_ERROR_CHECK(esp_timer_create(&timer_wifi_arg, &timer_wifi_handle));
@@ -142,8 +145,11 @@ void init_wifi(void) //
 
     // xEventGroupSetBits(Net_sta_group, WIFI_S_BIT);
     start_user_wifi();
+    strncpy(temp, SerialNum, 5);
+    snprintf(AP_SSID, 15, "Ubibot-%s", temp);
+    ESP_LOGI(TAG, "AP_SSID:%s", AP_SSID);
     //创建TCP监听端口 ，常开
-    xTaskCreate(tcp_server_task, "tcp_server", 4096, NULL, 5, NULL);
+    xTaskCreate(tcp_server_task, "tcp_server", 4096, NULL, 7, NULL);
 }
 
 void stop_user_wifi(void)
@@ -318,6 +324,27 @@ void start_softap(void)
     ESP_LOGI(TAG, "wifi_init_softap finished. ");
 }
 
+int Tcp_Send(int sock, char *Send_Buff)
+{
+    uint16_t Send_Buff_len = strlen(Send_Buff);
+    int to_write = Send_Buff_len;
+    int written = 0;
+    // ESP_LOGI(TAG, "Send_Buff:%s,Len:%d,sock:%d", Send_Buff, Send_Buff_len, sock);
+    while (to_write > 0)
+    {
+        written = send(sock, Send_Buff + (Send_Buff_len - to_write), to_write, 0);
+        if (written < 0)
+        {
+            ESP_LOGE(TAG, "Error occurred during sending: errno %d", errno);
+            return written;
+        }
+        to_write -= written;
+    }
+
+    return written;
+}
+
+//TCP 收发数据
 static void do_retransmit(const int sock)
 {
     int len;
@@ -338,28 +365,10 @@ static void do_retransmit(const int sock)
         else
         {
             rx_buffer[len] = 0; // Null-terminate whatever is received and treat it like a string
-            ESP_LOGI(TAG, "Received %d bytes: %s", len, rx_buffer);
-            ret = ParseTcpUartCmd(rx_buffer);
-            snprintf(rx_buffer, sizeof(rx_buffer), "{\"status\":0,\"code\": %d}", ret);
-
-            int written = send(sock, rx_buffer, strlen(rx_buffer), 0);
-            if (written < 0)
-            {
-                ESP_LOGE(TAG, "Error occurred during sending: errno %d", errno);
-            }
-
-            // send() can return less bytes than supplied length.
-            // Walk-around for robust implementation.
-            // int to_write = len;
-            // while (to_write > 0)
-            // {
-            //     int written = send(sock, rx_buffer + (len - to_write), to_write, 0);
-            //     if (written < 0)
-            //     {
-            //         ESP_LOGE(TAG, "Error occurred during sending: errno %d", errno);
-            //     }
-            //     to_write -= written;
-            // }
+            ESP_LOGI(TAG, "Received %d,strlen:%d, bytes: %s,sock:%d", len, strlen(rx_buffer), rx_buffer, sock);
+            // send(sock, rx_buffer, len, 0);
+            ret = ParseTcpUartCmd(rx_buffer, 1, sock);
+            // ESP_LOGI(TAG, "TCP ret:%d", ret);
         }
     } while (len > 0);
 }

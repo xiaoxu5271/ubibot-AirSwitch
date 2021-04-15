@@ -90,7 +90,7 @@ static void mqtt_event_handler(void *handler_args, esp_event_base_t base, int32_
 
 void initialise_mqtt(void)
 {
-    xTaskCreate(Send_Mqtt_Task, "Send My_Mqtt", 4096, NULL, 10, NULL);
+    xTaskCreate(Send_Mqtt_Task, "Send My_Mqtt", 4096, NULL, 6, NULL);
 }
 
 void Start_W_Mqtt(void)
@@ -143,6 +143,7 @@ void Send_Mqtt_Task(void *arg)
     while (1)
     {
         xQueueReceive(Send_Mqtt_Queue, &Mqtt_Send, -1);
+        xEventGroupWaitBits(Net_sta_group, ACTIVED_BIT, false, true, -1); //等待激活
         if (MQTT_W_STA == true)
         {
             uint8_t *status_buff = (uint8_t *)malloc(MQTT_STATUS_BUFF_LEN);
@@ -158,5 +159,14 @@ void Send_Mqtt_Task(void *arg)
             free(mqtt_buff);
             // return 1;
         }
+    }
+}
+
+void Send_Mqtt_Buff(char *buff)
+{
+    // xEventGroupWaitBits(Net_sta_group, ACTIVED_BIT, false, true, -1); //等待激活
+    if ((xEventGroupGetBits(Net_sta_group) & MQTT_W_S_BIT) == MQTT_W_S_BIT)
+    {
+        esp_mqtt_client_publish(client, topic_p, buff, 0, 1, 0);
     }
 }

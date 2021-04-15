@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdarg.h>
 
 #include <cJSON.h>
 #include "esp_system.h"
@@ -885,10 +886,23 @@ void Create_cali_buf(char *read_buf)
     cJSON_Delete(pJsonRoot); //delete cjson root
 }
 
-esp_err_t ParseTcpUartCmd(char *pcCmdBuffer)
+esp_err_t ParseTcpUartCmd(char *pcCmdBuffer, ...)
 {
-    // char send_buf[128] = {0};
-    // sprintf(send_buf, "{\"status\":0,\"code\": 0}");
+    char *Ret_OK = "{\"status\":0,\"code\": 0}\r\n";
+    char *Ret_Fail = "{\"status\":1,\"code\":1}\r\n";
+
+    va_list argp;
+    /*argp指向传入的第一个可选参数，msg是最后一个确定的参数*/
+    va_start(argp, pcCmdBuffer);
+    int sock = 0;
+    int tcp_flag = va_arg(argp, int);
+    if (tcp_flag == 1)
+    {
+        sock = va_arg(argp, int);
+        ESP_LOGI(TAG, "sock: %d\n", sock);
+    }
+    va_end(argp);
+
     esp_err_t ret = ESP_FAIL;
     if (NULL == pcCmdBuffer) //null
     {
@@ -959,8 +973,11 @@ esp_err_t ParseTcpUartCmd(char *pcCmdBuffer)
                         ESP_LOGI(TAG, "MqttPort= %s, len=%d\n", pSub->valuestring, strlen(pSub->valuestring));
                         E2P_Write(MQTT_PORT_ADD, (uint8_t *)pSub->valuestring, 5); //save
                     }
-
-                    printf("{\"status\":0,\"code\": 0}\r\n");
+                    if (tcp_flag)
+                    {
+                        Tcp_Send(sock, Ret_OK);
+                    }
+                    printf("%s", Ret_OK);
 
                     vTaskDelay(3000 / portTICK_RATE_MS);
                     cJSON_Delete(pJson);
@@ -972,7 +989,11 @@ esp_err_t ParseTcpUartCmd(char *pcCmdBuffer)
                 {
                     ret = ESP_FAIL;
                     //密码错误
-                    printf("{\"status\":1,\"code\": 101}\r\n");
+                    if (tcp_flag)
+                    {
+                        Tcp_Send(sock, Ret_Fail);
+                    }
+                    printf("%s", Ret_Fail);
                 }
             }
         }
@@ -996,9 +1017,13 @@ esp_err_t ParseTcpUartCmd(char *pcCmdBuffer)
                 E2P_Write(WIFI_PASSWORD_ADD, (uint8_t *)wifi_data.wifi_pwd, sizeof(wifi_data.wifi_pwd));
                 ESP_LOGI(TAG, "WIFI_PWD = %s\r\n", pSub->valuestring);
             }
-
+            if (tcp_flag)
+            {
+                Tcp_Send(sock, Ret_OK);
+            }
+            printf("%s", Ret_OK);
             Net_Switch();
-            printf("{\"status\":0,\"code\": 0}\r\n");
+
             //重置网络
 
             ret = ESP_OK;
@@ -1034,7 +1059,11 @@ esp_err_t ParseTcpUartCmd(char *pcCmdBuffer)
                 E2P_Write(MQTT_PORT_ADD, (uint8_t *)pSub->valuestring, 5); //save
             }
 
-            printf("{\"status\":0,\"code\": 0}\r\n");
+            if (tcp_flag)
+            {
+                Tcp_Send(sock, Ret_OK);
+            }
+            printf("%s", Ret_OK);
 
             vTaskDelay(3000 / portTICK_RATE_MS);
             cJSON_Delete(pJson);
@@ -1085,6 +1114,10 @@ esp_err_t ParseTcpUartCmd(char *pcCmdBuffer)
             json_temp = cJSON_PrintUnformatted(root);
             if (json_temp != NULL)
             {
+                if (tcp_flag)
+                {
+                    Tcp_Send(sock, json_temp);
+                }
                 printf("%s\r\n", json_temp);
                 cJSON_free(json_temp);
             }
@@ -1158,6 +1191,10 @@ esp_err_t ParseTcpUartCmd(char *pcCmdBuffer)
             json_temp = cJSON_PrintUnformatted(root);
             if (json_temp != NULL)
             {
+                if (tcp_flag)
+                {
+                    Tcp_Send(sock, json_temp);
+                }
                 printf("%s\r\n", json_temp);
                 cJSON_free(json_temp);
             }
@@ -1491,35 +1528,6 @@ char *s_strstr(const char *_pBegin, int _ReadLen, int *first_len, const char *_s
 //读取EEPROM中的metadata
 void Read_Metadate_E2p(void)
 {
-    uint8_t Last_Switch_Status, reset_reason;
-    de_sw_s = E2P_ReadOneByte(DE_SWITCH_STA_ADD); //上电开关默认状态
-    Last_Switch_Status = E2P_ReadOneByte(LAST_SWITCH_ADD);
-    reset_reason = esp_reset_reason();
-    ESP_LOGI(TAG, "reset_reason=%d", reset_reason);
-    //上电启动
-
-    ESP_LOGI(TAG, "de_sw_s=%d", de_sw_s);
-    switch (de_sw_s)
-    {
-    case 0:
-        Switch_Relay(0);
-        break;
-
-    case 1:
-        Switch_Relay(1);
-        break;
-
-    case 2:
-        Last_Switch_Status = E2P_ReadOneByte(LAST_SWITCH_ADD);
-        if (Last_Switch_Status <= 100)
-        {
-            Switch_Relay(E2P_ReadOneByte(LAST_SWITCH_ADD));
-        }
-        break;
-
-    default:
-        break;
-    }
 
     fn_dp = E2P_ReadLenByte(FN_DP_ADD, 4);          //数据发送频率
     fn_ang = E2P_ReadOneByte(FN_ANG_ADD);           //

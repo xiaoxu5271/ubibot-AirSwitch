@@ -31,6 +31,7 @@ TaskHandle_t ota_handle = NULL;
 
 static void __attribute__((noreturn)) task_fatal_error()
 {
+    Send_Mqtt_Buff("{\"wifi_ota\":\"FAIL\"}");
     ESP_LOGE(TAG, "Exiting task due to fatal error...");
     esp_restart();
     (void)vTaskDelete(NULL);
@@ -105,6 +106,7 @@ static bool read_past_http_header(char text[], int total_len, uint32_t *content_
 //wifi ota
 void WIFI_OTA(void)
 {
+    char Status_buff[25] = {0};
     OTA_FLAG = true;
     esp_err_t err;
     //进度 百分比
@@ -203,6 +205,7 @@ void WIFI_OTA(void)
             err = esp_ota_write(update_handle, (const void *)ota_write_data, data_read);
             if (err != ESP_OK)
             {
+
                 http_cleanup(client);
                 task_fatal_error();
             }
@@ -210,7 +213,9 @@ void WIFI_OTA(void)
             if (percentage != (int)(binary_file_length * 100 / content_len))
             {
                 percentage = (int)(binary_file_length * 100 / content_len);
-                printf("WIFI OTA:%d%%\n", percentage);
+                snprintf(Status_buff, sizeof(Status_buff), "{\"wifi_ota\":%d}\r\n", percentage);
+                Send_Mqtt_Buff(Status_buff);
+                printf("%s", Status_buff);
             }
             // ESP_LOGI(TAG, "Written image length %d", binary_file_length);
         }
@@ -236,6 +241,7 @@ void WIFI_OTA(void)
         http_cleanup(client);
         task_fatal_error();
     }
+    Send_Mqtt_Buff("{\"wifi_ota\":\"OK\"}");
     ESP_LOGI(TAG, "Prepare to restart system!");
     esp_restart();
     return;
@@ -253,7 +259,7 @@ void ota_start(void) //建立OTA升级任务，目的是为了让此函数被调
 {
     if (OTA_FLAG == false)
     {
-        xTaskCreate(ota_task, "ota task", 5120, NULL, 10, &ota_handle);
+        xTaskCreate(ota_task, "ota task", 5120, NULL, 3, &ota_handle);
     }
 }
 

@@ -279,7 +279,7 @@ void Switch_Init(void)
     gpio_config(&io_conf);
     gpio_set_level(M_IN1, 0);
     gpio_set_level(M_IN2, 0);
-    gpio_set_level(EN_TRIP, 0);
+    // gpio_set_level(EN_TRIP, 0);
     gpio_set_level(EN_TEST, 0);
 
     io_conf.intr_type = GPIO_INTR_ANYEDGE;
@@ -291,7 +291,7 @@ void Switch_Init(void)
 
     gpio_evt_queue = xQueueCreate(10, sizeof(uint32_t));
     xTaskCreate(Sw_on_quan_Task, "sw on quan", 4096, NULL, 5, &Sw_on_Task_Handle);
-    xTaskCreate(HALL_Task, "HALL_Task", 4096, NULL, 10, NULL);
+    xTaskCreate(HALL_Task, "HALL_Task", 4096, NULL, 8, NULL);
     esp_timer_create(&timer_trip_arg, &timer_trip_handle);
     esp_timer_create(&timer_motor_arg, &timer_motor_handle);
     esp_timer_create(&timer_test_arg, &timer_test_handle);
@@ -308,6 +308,7 @@ void Switch_Init(void)
     //c齿轮未复位
     if (m_sta == 1)
     {
+        ESP_LOGE(TAG, "MECH_FLAG");
         MECH_FLAG = false;
         gpio_set_level(M_IN1, 1);
         gpio_set_level(M_IN2, 0);
@@ -316,5 +317,31 @@ void Switch_Init(void)
     else
     {
         MECH_FLAG = true;
+    }
+
+    uint8_t Last_Switch_Status;
+    de_sw_s = E2P_ReadOneByte(DE_SWITCH_STA_ADD); //上电开关默认状态
+
+    ESP_LOGI(TAG, "de_sw_s=%d", de_sw_s);
+    switch (de_sw_s)
+    {
+    case 0:
+        Switch_Relay(0);
+        break;
+
+    case 1:
+        Switch_Relay(1);
+        break;
+
+    case 2:
+        Last_Switch_Status = E2P_ReadOneByte(LAST_SWITCH_ADD);
+        if (Last_Switch_Status <= 100)
+        {
+            Switch_Relay(Last_Switch_Status);
+        }
+        break;
+
+    default:
+        break;
     }
 }

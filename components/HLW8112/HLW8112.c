@@ -731,6 +731,7 @@ bool Read_HLW8112_U(void)
 
     if ((U32_RMSU_RegData & 0x800000) == 0x800000)
     {
+        ESP_LOGE(TAG, "%d,F_AC_V  = 0", __LINE__);
         F_AC_V = 0;
     }
     else
@@ -1120,7 +1121,7 @@ void HLW_Read_Task(void *arg)
                 continue;
             }
 
-            Read_Flag = ulTaskNotifyTake(pdFALSE, 100 / portTICK_RATE_MS);
+            // Read_Flag = ulTaskNotifyTake(pdFALSE, 100 / portTICK_RATE_MS);
 
             xSemaphoreTake(HLW_muxtex, -1);
 
@@ -1183,18 +1184,7 @@ void HLW_Read_Task(void *arg)
                 }
             }
 
-            // Read_HLW8112_State();
-            // if (Read_Flag != 0)
-            // {
-            //     Read_HLW8112_State();
-            //     ESP_LOGI(TAG, "Read_Flag:%d", Read_Flag);
-            //     if (Binary_energy != NULL)
-            //     {
-            //         xTaskNotifyGive(Binary_energy);
-            //     }
-            // }
-            // ESP_LOGI(TAG, "F_AC_I_B:%f", F_AC_I_B);
-            vTaskDelay(100 / portTICK_RATE_MS);
+            vTaskDelay(300 / portTICK_RATE_MS);
         }
     }
 }
@@ -1251,6 +1241,7 @@ void HLW_Energy_Task(void *arg)
     char *filed_buff;
     char *OutBuffer;
     char *time_buff;
+    char *data_buff;
     // uint8_t *SaveBuffer;
     uint16_t len = 0;
     cJSON *pJsonRoot;
@@ -1263,6 +1254,7 @@ void HLW_Energy_Task(void *arg)
         if (((xEventGroupGetBits(Net_sta_group) & TIME_CAL_BIT) == TIME_CAL_BIT) && HLW_FLAG)
         {
             filed_buff = (char *)malloc(9);
+            data_buff = (char *)malloc(15);
             time_buff = (char *)malloc(24);
             Server_Timer_SEND(time_buff);
             pJsonRoot = cJSON_CreateObject();
@@ -1270,31 +1262,38 @@ void HLW_Energy_Task(void *arg)
             // cJSON_AddItemToObject(pJsonRoot, "field1", cJSON_CreateNumber(mqtt_json_s.mqtt_switch_status));
 
             snprintf(filed_buff, 9, "field%d", f_sw_v);
-            cJSON_AddItemToObject(pJsonRoot, filed_buff, cJSON_CreateNumber(F_AC_V));
+            snprintf(data_buff, 15, "%.3f", F_AC_V);
+            cJSON_AddItemToObject(pJsonRoot, filed_buff, cJSON_CreateString(data_buff));
             //通电测上传 电流，功率，漏电流数据
             if (sw_sta == 1)
             {
                 snprintf(filed_buff, 9, "field%d", f_sw_c);
-                cJSON_AddItemToObject(pJsonRoot, filed_buff, cJSON_CreateNumber(F_AC_I));
+                snprintf(data_buff, 15, "%.3f", F_AC_I);
+                cJSON_AddItemToObject(pJsonRoot, filed_buff, cJSON_CreateString(data_buff));
                 snprintf(filed_buff, 9, "field%d", f_sw_p);
-                cJSON_AddItemToObject(pJsonRoot, filed_buff, cJSON_CreateNumber(F_AC_P));
+                snprintf(data_buff, 15, "%.3f", F_AC_P);
+                cJSON_AddItemToObject(pJsonRoot, filed_buff, cJSON_CreateString(data_buff));
                 snprintf(filed_buff, 9, "field%d", f_sw_lc);
-                cJSON_AddItemToObject(pJsonRoot, filed_buff, cJSON_CreateNumber(F_AC_I_B));
+                snprintf(data_buff, 15, "%.3f", F_AC_I_B);
+                cJSON_AddItemToObject(pJsonRoot, filed_buff, cJSON_CreateString(data_buff));
 
                 if (fn_ang)
                 {
                     snprintf(filed_buff, 9, "field%d", f_sw_ang);
-                    cJSON_AddItemToObject(pJsonRoot, filed_buff, cJSON_CreateNumber(F_Angle));
+                    snprintf(data_buff, 15, "%.3f", F_Angle);
+                    cJSON_AddItemToObject(pJsonRoot, filed_buff, cJSON_CreateString(data_buff));
                 }
                 if (fn_freq)
                 {
                     snprintf(filed_buff, 9, "field%d", f_sw_freq);
-                    cJSON_AddItemToObject(pJsonRoot, filed_buff, cJSON_CreateNumber(F_AC_LINE_Freq));
+                    snprintf(data_buff, 15, "%.3f", F_AC_LINE_Freq);
+                    cJSON_AddItemToObject(pJsonRoot, filed_buff, cJSON_CreateString(data_buff));
                 }
                 if (fn_pf)
                 {
                     snprintf(filed_buff, 9, "field%d", f_sw_pf);
-                    cJSON_AddItemToObject(pJsonRoot, filed_buff, cJSON_CreateNumber(F_AC_PF));
+                    snprintf(data_buff, 15, "%.3f", F_AC_PF);
+                    cJSON_AddItemToObject(pJsonRoot, filed_buff, cJSON_CreateString(data_buff));
                 }
             }
 
@@ -1310,6 +1309,7 @@ void HLW_Energy_Task(void *arg)
                 cJSON_free(OutBuffer);
             }
             cJSON_Delete(pJsonRoot); //delete cjson root
+            free(data_buff);
             free(filed_buff);
             free(time_buff);
         }
@@ -1402,8 +1402,8 @@ void HLW_Init(void)
     gpio_isr_handler_add(HLW_INT1, gpio_isr_handler, (void *)HLW_INT1);
     gpio_isr_handler_add(HLW_INT2, gpio_isr_handler, (void *)HLW_INT2);
 
-    xTaskCreate(HLW_INT_Task, "HLW_INT_Task", 2048, NULL, 4, NULL);
-    xTaskCreate(HLW_Read_Task, "HLW_Read_Task", 4096, NULL, 5, &HLW_Read_Task_Hanlde);
-    xTaskCreate(HLW_Energy_Task, "HLW_Energy_Task", 4096, NULL, 6, &Binary_energy);
-    xTaskCreate(HLW_Quan_Task, "HLW_Quan_Task", 4096, NULL, 7, &Binary_ele_quan);
+    xTaskCreate(HLW_INT_Task, "HLW_INT_Task", 2048, NULL, 11, NULL);
+    xTaskCreate(HLW_Read_Task, "HLW_Read_Task", 4096, NULL, 10, &HLW_Read_Task_Hanlde);
+    xTaskCreate(HLW_Energy_Task, "HLW_Energy_Task", 4096, NULL, 5, &Binary_energy);
+    xTaskCreate(HLW_Quan_Task, "HLW_Quan_Task", 4096, NULL, 5, &Binary_ele_quan);
 }

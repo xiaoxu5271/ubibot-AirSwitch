@@ -55,14 +55,12 @@ void app_main()
 		   (chip_info.features & CHIP_FEATURE_EMB_FLASH) ? "embedded" : "external");
 
 	Led_Init();
-	Switch_Init();
 	E2prom_Init();
 	Read_Metadate_E2p();
 	Read_Product_E2p();
 	Read_Fields_E2p();
 	Uart_Init();
 	user_app_key_init();
-	HLW_Init();
 
 	esp_err_t ret = nvs_flash_init();
 	if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND)
@@ -77,6 +75,9 @@ void app_main()
 
 	initialise_http(); //须放在 采集任务建立之后
 	initialise_mqtt();
+
+	Switch_Init();
+	HLW_Init();
 
 	/* 判断是否有序列号和product id */
 	if ((strlen(SerialNum) == 0) || (strlen(ProductId) == 0) || (strlen(WEB_SERVER) == 0)) //未获取到序列号或productid，未烧写序列号
