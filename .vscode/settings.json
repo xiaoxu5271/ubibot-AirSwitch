@@ -19,7 +19,8 @@
                 "json_parse.h": "c",
                 "random": "c",
                 "esp_wifi.h": "c",
-                "*.ipp": "c"
+                "*.ipp": "c",
+                "task.h": "c"
         },
         "idf.flashType": "UART",
 }

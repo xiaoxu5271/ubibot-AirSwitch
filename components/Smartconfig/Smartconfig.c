@@ -6,6 +6,7 @@
 #include "freertos/event_groups.h"
 #include "esp_event.h"
 #include "esp_wifi.h"
+#include "tcpip_adapter.h"
 // #include "esp_wpa2.h"
 #include "esp_event.h"
 #include "esp_log.h"
@@ -307,19 +308,30 @@ void start_softap(void)
 
     wifi_config_t wifi_config = {
         .ap = {
-            .ssid = "TEST",
-            .ssid_len = 5,
+            // .ssid = AP_SSID,
+            // .ssid_len = 5,
             // .channel = EXAMPLE_ESP_WIFI_CHANNEL,
             // .password = "12345678",
             .max_connection = 5,
             .authmode = WIFI_AUTH_OPEN},
     };
 
+    memcpy(wifi_config.ap.ssid, AP_SSID, sizeof(AP_SSID));
     // wifi_config.ap.authmode = WIFI_AUTH_OPEN;
 
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_AP));
     ESP_ERROR_CHECK(esp_wifi_set_config(ESP_IF_WIFI_AP, &wifi_config));
     ESP_ERROR_CHECK(esp_wifi_start());
+
+    tcpip_adapter_ip_info_t ip_info = {
+        .ip.addr = ipaddr_addr("192.168.1.1"),
+        .netmask.addr = ipaddr_addr("255.255.255.0"),
+        .gw.addr = ipaddr_addr("192.168.1.1"),
+    };
+
+    ESP_ERROR_CHECK(tcpip_adapter_dhcps_stop(TCPIP_ADAPTER_IF_AP));
+    ESP_ERROR_CHECK(tcpip_adapter_set_ip_info(TCPIP_ADAPTER_IF_AP, &ip_info));
+    ESP_ERROR_CHECK(tcpip_adapter_dhcps_start(TCPIP_ADAPTER_IF_AP));
 
     ESP_LOGI(TAG, "wifi_init_softap finished. ");
 }

@@ -54,8 +54,8 @@ uint8_t f_sw_pc = 6;    //累计用电量
 uint8_t f_rssi_w = 7;   //WIFI 信号
 uint8_t f_sw_on = 8;    //累计开启时长
 uint8_t f_sw_ang = 9;   //相位角
-uint8_t f_sw_freq = 10; //市电频率
-uint8_t f_sw_pf = 11;   //功率因数
+uint8_t f_sw_freq = 11; //市电频率
+uint8_t f_sw_pf = 10;   //功率因数
 
 //
 char SerialNum[SERISE_NUM_LEN] = {0};
@@ -1020,8 +1020,11 @@ esp_err_t ParseTcpUartCmd(char *pcCmdBuffer, ...)
             if (tcp_flag)
             {
                 Tcp_Send(sock, Ret_OK);
+                //AP配置，先关闭蓝牙
+                ble_app_stop();
             }
             printf("%s", Ret_OK);
+            vTaskDelay(1000 / portTICK_RATE_MS);
             Net_Switch();
 
             //重置网络

@@ -107,11 +107,16 @@ double K_A_I;      //A通道电流系数，计算后
 
 bool HLW_Set_Flag = false; //flase 则需重新设置
 
+TickType_t xLastWakeTime;
+
 static xQueueHandle HLW_INT_evt_queue = NULL;
 
 void delay_us(uint32_t us)
 {
-    ets_delay_us(us);
+    // ets_delay_us(us);
+    // vTaskDelay(1 / portTICK_RATE_MS);
+
+    vTaskDelayUntil(&xLastWakeTime, 1);
 }
 /*=====================================================
  * Function : void HLW8112_SPI_WriteByte(unsigned char u8_data)
@@ -663,7 +668,7 @@ bool Read_HLW8112_PA_I(void)
         a = a / 1000;     //a= 5003ma,a/1000 = 5.003A,单位转换成A
         // a = a * D_CAL_A_I; //D_CAL_A_I是校正系数，默认是1
         F_AC_I = a;
-        if (a <= 0.02)
+        if (a <= 0.015)
         {
             F_AC_I = 0;
         }
@@ -1028,6 +1033,7 @@ void HLW_Read_Task(void *arg)
 {
     BaseType_t Read_Flag;
     uint8_t fail_num = 0;
+
     while (1)
     {
         HLW_Set_Flag = false;
@@ -1184,7 +1190,7 @@ void HLW_Read_Task(void *arg)
                 }
             }
 
-            vTaskDelay(300 / portTICK_RATE_MS);
+            vTaskDelay(500 / portTICK_RATE_MS);
         }
     }
 }
@@ -1374,6 +1380,7 @@ void HLW_Init(void)
 {
     HLW_INT_evt_queue = xQueueCreate(10, sizeof(uint32_t));
     HLW_muxtex = xSemaphoreCreateMutex();
+    xLastWakeTime = xTaskGetTickCount();
 
     gpio_config_t io_conf;
     io_conf.intr_type = GPIO_PIN_INTR_DISABLE;
@@ -1402,7 +1409,7 @@ void HLW_Init(void)
     gpio_isr_handler_add(HLW_INT1, gpio_isr_handler, (void *)HLW_INT1);
     gpio_isr_handler_add(HLW_INT2, gpio_isr_handler, (void *)HLW_INT2);
 
-    xTaskCreate(HLW_INT_Task, "HLW_INT_Task", 2048, NULL, 11, NULL);
+    xTaskCreate(HLW_INT_Task, "HLW_INT_Task", 2048, NULL, 20, NULL);
     xTaskCreate(HLW_Read_Task, "HLW_Read_Task", 4096, NULL, 10, &HLW_Read_Task_Hanlde);
     xTaskCreate(HLW_Energy_Task, "HLW_Energy_Task", 4096, NULL, 5, &Binary_energy);
     xTaskCreate(HLW_Quan_Task, "HLW_Quan_Task", 4096, NULL, 5, &Binary_ele_quan);

@@ -179,15 +179,9 @@ void Sw_on_quan_Task(void *pvParameters)
             {
                 len = strlen(OutBuffer);
                 ESP_LOGI(TAG, "len:%d\n%s\n", len, OutBuffer);
-                if (xSemaphoreTake(Cache_muxtex, 10 / portTICK_RATE_MS) == pdTRUE)
-                {
-                    DataSave((uint8_t *)OutBuffer, len);
-                    xSemaphoreGive(Cache_muxtex);
-                }
-                else
-                {
-                    ESP_LOGE(TAG, "%d,Cache_muxtex", __LINE__);
-                }
+                xSemaphoreTake(Cache_muxtex, -1);
+                DataSave((uint8_t *)OutBuffer, len);
+                xSemaphoreGive(Cache_muxtex);
                 cJSON_free(OutBuffer);
             }
             cJSON_Delete(pJsonRoot); //delete cjson root
