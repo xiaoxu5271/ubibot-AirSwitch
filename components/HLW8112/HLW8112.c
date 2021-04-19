@@ -17,6 +17,7 @@
 #include "freertos/task.h"
 #include "freertos/queue.h"
 #include "freertos/semphr.h"
+#include "driver/spi_master.h"
 #include "driver/gpio.h"
 #include "esp_log.h"
 #include <cJSON.h>
@@ -110,6 +111,32 @@ bool HLW_Set_Flag = false; //flase 则需重新设置
 TickType_t xLastWakeTime;
 
 static xQueueHandle HLW_INT_evt_queue = NULL;
+// #define SIM_SPI
+
+spi_device_handle_t spi;
+spi_bus_config_t buscfg = {
+    .miso_io_num = PIN_NUM_MISO,
+    .mosi_io_num = PIN_NUM_MOSI,
+    .sclk_io_num = PIN_NUM_CLK,
+    .quadwp_io_num = -1,
+    .quadhd_io_num = -1
+
+};
+
+//Configuration for the SPI device on the other side of the bus
+spi_device_interface_config_t devcfg = {
+    .command_bits = 0,
+    .address_bits = 0,
+    .dummy_bits = 0,
+    .clock_speed_hz = 100 * 1000,
+    // .duty_cycle_pos = 128, //50% duty cycle
+    .mode = 1,
+    .spics_io_num = -1, //PIN_NUM_CS,           //W5500需要自己调用该引脚的开关
+                        //     .cs_ena_posttrans = 3, //Keep the CS low 3 cycles after transaction, to stop slave from missing the last bit when CS has less propagation delay than CLK
+    .queue_size = 7,
+    .flags = 0
+
+};
 
 void delay_us(uint32_t us)
 {
@@ -118,6 +145,43 @@ void delay_us(uint32_t us)
 
     vTaskDelayUntil(&xLastWakeTime, 1);
 }
+
+/**
+  * @brief  从SPI写入一个字节
+  * @retval 
+  */
+void spi_writebyte(uint8_t writebyte)
+//void lcd_cmd(spi_device_handle_t spi, const uint8_t cmd)
+{
+    esp_err_t ret;
+    spi_transaction_t t;
+    memset(&t, 0, sizeof(t)); //Zero out the transaction
+    t.flags = SPI_TRANS_USE_TXDATA;
+    t.length = sizeof(uint8_t) * 8; //Command is 8 bits
+    t.tx_data[0] = writebyte;       //The data is the cmd itself
+    //xSemaphoreTake(rdySem, 100);        //-1); //Wait until slave is ready
+    ret = spi_device_transmit(spi, &t); //Transmit!
+    assert(ret == ESP_OK);              //Should have had no issues.
+}
+
+/**
+  * @brief  从SPI读一个字节
+  * @retval  读到的数据
+  */
+uint8_t spi_readbyte(void)
+{
+    //spi_writebyte(0x00);
+    spi_transaction_t t;
+    memset(&t, 0, sizeof(t));
+    t.length = 8;
+    t.flags = SPI_TRANS_USE_RXDATA;
+
+    esp_err_t ret = spi_device_transmit(spi, &t);
+    assert(ret == ESP_OK);
+    // printf("RXDATA: %04X\n", t.rx_data[0]);
+    return (uint8_t)t.rx_data[0];
+}
+
 /*=====================================================
  * Function : void HLW8112_SPI_WriteByte(unsigned char u8_data)
  * Describe : 
@@ -128,6 +192,7 @@ void delay_us(uint32_t us)
 =====================================================*/
 void HLW8112_SPI_WriteByte(unsigned char u8_data)
 {
+#ifdef SIM_SPI
     unsigned char i;
     unsigned char x;
     x = u8_data;
@@ -144,6 +209,9 @@ void HLW8112_SPI_WriteByte(unsigned char u8_data)
         gpio_set_level(HLW_SCLK, 0);
         delay_us(10);
     }
+#else
+    spi_writebyte(u8_data);
+#endif
 }
 /*=====================================================
  * Function : unsigned char HLW8112_SPI_ReadByte(void)
@@ -155,6 +223,7 @@ void HLW8112_SPI_WriteByte(unsigned char u8_data)
 =====================================================*/
 unsigned char HLW8112_SPI_ReadByte(void)
 {
+#ifdef SIM_SPI
     unsigned char i;
     unsigned char u8_data;
     u8_data = 0x00;
@@ -171,8 +240,10 @@ unsigned char HLW8112_SPI_ReadByte(void)
         if (gpio_get_level(HLW_SDO) == HIGH)
             u8_data |= 0x01;
     }
-
     return u8_data;
+#else
+    return spi_readbyte();
+#endif
 }
 
 /*=====================================================
@@ -336,7 +407,6 @@ unsigned char Judge_CheckSum_HLW8112_Calfactor(void)
     // printf("U16_PowerSC_RegData = %x\n ", U16_PowerSC_RegData);
     // printf("U16_EnergyAC_RegData = %x\n ", U16_EnergyAC_RegData);
     // printf("U16_EnergyBC_RegData = %x\n ", U16_EnergyBC_RegData);
-
     // printf("U16_CheckSUM_RegData = %x\n ", U16_CheckSUM_RegData);
     // printf("U16_CheckSUM_Data = %x\n ", U16_CheckSUM_Data);
 
@@ -351,6 +421,18 @@ unsigned char Judge_CheckSum_HLW8112_Calfactor(void)
         d = 0;
         HLW_FLAG = false;
         ESP_LOGE(TAG, "系数寄存器校验fail\r\n");
+
+        printf("转换系数寄存器\r\n");
+        printf("U16_RMSIAC_RegData =   %x\n ", U16_RMSIAC_RegData);
+        printf("U16_RMSIBC_RegData =   %x\n ", U16_RMSIBC_RegData);
+        printf("U16_RMSUC_RegData =    %x\n ", U16_RMSUC_RegData);
+        printf("U16_PowerPAC_RegData = %x\n ", U16_PowerPAC_RegData);
+        printf("U16_PowerPBC_RegData = %x\n ", U16_PowerPBC_RegData);
+        printf("U16_PowerSC_RegData =  %x\n ", U16_PowerSC_RegData);
+        printf("U16_EnergyAC_RegData = %x\n ", U16_EnergyAC_RegData);
+        printf("U16_EnergyBC_RegData = %x\n ", U16_EnergyBC_RegData);
+        printf("U16_CheckSUM_RegData = %x\n ", U16_CheckSUM_RegData);
+        printf("U16_CheckSUM_Data =    %x\n ", U16_CheckSUM_Data);
     }
     xSemaphoreGive(HLW_muxtex);
 
@@ -835,7 +917,13 @@ void Read_HLW8112_PB(void)
 void Read_HLW8112_EA(void)
 {
     //读取功率寄存器值
-    U32_ENERGY_PA_RegData += Read_HLW8112_RegData(REG_ENERGY_PA_ADDR, 3);
+    uint32_t temp = Read_HLW8112_RegData(REG_ENERGY_PA_ADDR, 3);
+
+    U32_ENERGY_PA_RegData += temp;
+    if (temp > 0)
+    {
+        ESP_LOGW(TAG, "temp:%d,U32_ENERGY_PA_RegData=%lld", temp, U32_ENERGY_PA_RegData);
+    }
 }
 
 /*=====================================================
@@ -1042,6 +1130,8 @@ void HLW_Read_Task(void *arg)
             vTaskDelay(1000 / portTICK_PERIOD_MS);
             continue;
         }
+        // vTaskDelay(1000 / portTICK_PERIOD_MS);
+        // continue;
         //复位重启
         gpio_set_level(HLW_SCSN, 0);
         HLW8112_SPI_WriteByte(0xea);
@@ -1376,6 +1466,27 @@ void HLW_Quan_Task(void *arg)
     }
 }
 
+//硬件SPI
+void hlw_spi_init(void)
+{
+    /************初始化CS引脚***********/
+    gpio_config_t io_conf;
+    io_conf.intr_type = GPIO_PIN_INTR_DISABLE;
+    io_conf.mode = GPIO_MODE_OUTPUT;
+    io_conf.pin_bit_mask = (1 << HLW_SCSN);
+    io_conf.pull_down_en = 0;
+    io_conf.pull_up_en = 0;
+    gpio_config(&io_conf);
+    gpio_set_level(HLW_SCSN, 1);
+
+    /**************安装SPI设备*************/
+    esp_err_t ret;
+    ret = spi_bus_initialize(VSPI_HOST, &buscfg, 1);
+    ESP_ERROR_CHECK(ret);
+    ret = spi_bus_add_device(VSPI_HOST, &devcfg, &spi);
+    ESP_ERROR_CHECK(ret);
+}
+
 void HLW_Init(void)
 {
     HLW_INT_evt_queue = xQueueCreate(10, sizeof(uint32_t));
@@ -1383,6 +1494,8 @@ void HLW_Init(void)
     xLastWakeTime = xTaskGetTickCount();
 
     gpio_config_t io_conf;
+
+#ifdef SIM_SPI
     io_conf.intr_type = GPIO_PIN_INTR_DISABLE;
     io_conf.mode = GPIO_MODE_OUTPUT;
     io_conf.pin_bit_mask = ((1ULL << HLW_SCSN) | (1ULL << HLW_SCLK) | (1ULL << HLW_SDI));
@@ -1396,6 +1509,9 @@ void HLW_Init(void)
     io_conf.pull_down_en = 1;
     io_conf.pull_up_en = 0;
     gpio_config(&io_conf);
+#else
+    hlw_spi_init();
+#endif
 
     //下降沿中断
     io_conf.intr_type = GPIO_INTR_NEGEDGE;

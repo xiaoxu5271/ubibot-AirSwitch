@@ -15,6 +15,12 @@
 #define HLW_INT1 25
 #define HLW_INT2 26
 
+//硬件SPI
+#define PIN_NUM_MISO 33
+#define PIN_NUM_MOSI 5
+#define PIN_NUM_CLK 18
+#define PIN_NUM_CS 23
+
 //8112/8110 reg define
 #define REG_SYSCON_ADDR 0x00
 #define REG_EMUCON_ADDR 0x01
