@@ -347,19 +347,41 @@ uint32_t Read_HLW8112_RegData(unsigned char ADDR_Reg, unsigned char u8_reg_lengt
 {
     unsigned char i;
     union LongData u32_t_data1;
+    union LongData u32_t_check;
+
+    u32_t_data1.word = 0;
+    u32_t_check.word = 0;
 
     gpio_set_level(HLW_SCSN, 0);
-    u32_t_data1.word = 0x00000000;
 
-    //高位在前
-    HLW8112_SPI_ReadReg(ADDR_Reg);
-    for (i = 0; i < u8_reg_length; i++)
+    for (uint8_t i = 0; i < 10; i++)
     {
-        u32_t_data1.byte[u8_reg_length - 1 - i] = HLW8112_SPI_ReadByte();
+        //高位在前
+        HLW8112_SPI_ReadReg(ADDR_Reg);
+        for (i = 0; i < u8_reg_length; i++)
+        {
+            u32_t_data1.byte[u8_reg_length - 1 - i] = HLW8112_SPI_ReadByte();
+        }
+
+        HLW8112_SPI_ReadReg(REG_RDATA_ADDR);
+        for (i = 0; i < u8_reg_length; i++)
+        {
+            u32_t_check.byte[u8_reg_length - 1 - i] = HLW8112_SPI_ReadByte();
+        }
+
+        if (u32_t_data1.word == u32_t_check.word)
+        {
+            break;
+        }
+        else
+        {
+            ESP_LOGE(TAG, "%d,Read_HLW8112_RegData ERR", __LINE__);
+        }
+
+        vTaskDelay(10 / portTICK_RATE_MS);
     }
 
     gpio_set_level(HLW_SCSN, 1);
-
     return u32_t_data1.word;
 }
 

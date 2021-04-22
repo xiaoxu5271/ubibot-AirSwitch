@@ -130,16 +130,6 @@ void Switch_Relay(int8_t set_value)
     {
         E2P_WriteOneByte(LAST_SWITCH_ADD, sw_sta); //写入开关状态
     }
-
-    if (sw_sta == 1)
-    {
-        SW_last_time = (uint64_t)esp_timer_get_time();
-    }
-    else
-    {
-        //累加单次开启时长
-        SW_on_time += (uint64_t)esp_timer_get_time() - SW_last_time;
-    }
 }
 
 //读取，构建累积开启时长
@@ -227,6 +217,17 @@ void HALL_Task(void *arg)
 
             case HALL_S:
                 sw_sta = gpio_get_level(HALL_S);
+
+                //统计开启时长
+                if (sw_sta == 1)
+                {
+                    SW_last_time = (uint64_t)esp_timer_get_time();
+                }
+                else
+                {
+                    //累加单次开启时长
+                    SW_on_time += (uint64_t)esp_timer_get_time() - SW_last_time;
+                }
 
                 //齿轮复位状态，代表外部手动操作合闸
                 if (c_type_flag == false)

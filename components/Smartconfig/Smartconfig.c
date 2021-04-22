@@ -40,8 +40,7 @@ uint16_t Net_ErrCode = 0;
 bool scan_flag = false;
 char AP_SSID[15] = {0};
 
-static void
-tcp_server_task(void *pvParameters);
+static void tcp_server_task(void *pvParameters);
 
 void timer_wifi_cb(void *arg);
 esp_timer_handle_t timer_wifi_handle = NULL; //定时器句柄
