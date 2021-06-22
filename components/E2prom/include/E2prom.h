@@ -27,7 +27,7 @@
 
 // #define FM24
 //Device Address
-#define FE_E2P_SIZE 8 * 1024
+#define FE_E2P_SIZE 1024
 #define FE_DEV_ADD 0XAE
 
 #define AT_E2P_SIZE 1024
